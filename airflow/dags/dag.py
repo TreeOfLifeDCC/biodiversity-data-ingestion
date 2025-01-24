@@ -4,7 +4,6 @@ import json
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
 from airflow.providers.google.cloud.operators.dataflow import (
-    DataflowTemplatedJobStartOperator,
     DataflowStartFlexTemplateOperator
 )
 
