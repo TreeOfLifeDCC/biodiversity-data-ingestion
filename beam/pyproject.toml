@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biodiversity-data-ingestion"
+version = "1.0.0"
+dependencies = [
+  "apache-beam[gcp]==2.62.0",
+  "lxml",
+]
