@@ -17,7 +17,7 @@ from dependencies.biodiversity_projects import (
 
 @task
 def get_metadata(study_id: str, project_name: str, bucket_name: str, **kwargs) -> None:
-    import collect_metadata_experiments_assemblies
+    from dependencies import collect_metadata_experiments_assemblies
 
     if "ERGA" in project_name:
         project_tag = "ERGA"
