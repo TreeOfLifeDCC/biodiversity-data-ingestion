@@ -75,7 +75,15 @@ def biodiversity_metadata_ingestion():
                 study_id, project_name, bucket_name
             )
         )
-    body = {"launchParameter": {"jobName": "test-2025-01-21", "parameters": {"output": "gs://prj-ext-prod-biodiv-data-in-airflow-logs/output-"}, "containerSpecGcsPath": "gs://prj-ext-prod-biodiv-data-in_cloudbuild/getting_started-py.json"}}
+    body = {
+        "launchParameter": {
+            "jobName": "test-2025-01-21",
+            "parameters": {
+                "output": "gs://prj-ext-prod-biodiv-data-in-airflow-logs/output-"
+            },
+            "containerSpecGcsPath": "gs://prj-ext-prod-biodiv-data-in_cloudbuild/getting_started-py.json"
+        }
+    }
     start_template_job = DataflowStartFlexTemplateOperator(
         task_id="start_template_job",
         project_id="prj-ext-prod-biodiv-data-in",
