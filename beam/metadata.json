@@ -1,0 +1,30 @@
+{
+  "name": "Biodiversity data ETL",
+  "description": "A Flex Template that ingest biodiversity data and updates Elasticsearch indices and BigQuery tagles",
+  "parameters": [
+    {
+      "name": "input_path",
+      "label": "Input path",
+      "helpText": "The path and filename prefix for input files. Example: gs://prj-ext-prod-biodiv-data-in-asg/*jsonl",
+      "regexes": [
+        "^gs:\\/\\/[^\\n\\r]+$"
+      ]
+    },
+    {
+      "name": "output_path",
+      "label": "Output destination",
+      "helpText": "The path and filename prefix for writing the output. Example: gs://prj-ext-prod-biodiv-data-in-asg/output",
+      "regexes": [
+        "^gs:\\/\\/[^\\n\\r]+$"
+      ]
+    },
+    {
+      "name": "bq_dataset_name",
+      "label": "BigQuery dataset name",
+      "helpText": "BigQuery dataset name, can only be one of erga, dtol, asg, gbdp",
+      "regexes": [
+        "(^erga$|^dtol$|^asg$|^gbdp$)"
+      ]
+    }
+  ]
+}
