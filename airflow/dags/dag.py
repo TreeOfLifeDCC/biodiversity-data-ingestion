@@ -77,11 +77,19 @@ def biodiversity_metadata_ingestion():
         )
     body = {
         "launchParameter": {
-            "jobName": "test-2025-01-21",
+            "jobName": "test-2025-01-30",
             "parameters": {
-                "output": "gs://prj-ext-prod-biodiv-data-in-airflow-logs/output-"
+                "input_path": "gs://prj-ext-prod-biodiv-data-in-asg/*jsonl",
+                "output_path": "gs://prj-ext-prod-biodiv-data-in-asg",
+                "bq_dataset_name": "asg"
             },
-            "containerSpecGcsPath": "gs://prj-ext-prod-biodiv-data-in_cloudbuild/getting_started-py.json"
+            "environment" : {
+                "tempLocation": "gs://dataflow-staging-europe-west2-153439618737/tmp",
+                "machineType": "e2-medium",
+                "stagingLocation": "gs://dataflow-staging-europe-west2-153439618737/staging",
+                "sdkContainerImage": "europe-west2-docker.pkg.dev/prj-ext-prod-biodiv-data-in/apache-beam-pipelines/biodiversity_etl:latest"
+            },
+            "containerSpecGcsPath": "gs://prj-ext-prod-biodiv-data-in_cloudbuild/biodiversity_etl-20250129-124751.json"
         }
     }
     start_template_job = DataflowStartFlexTemplateOperator(
