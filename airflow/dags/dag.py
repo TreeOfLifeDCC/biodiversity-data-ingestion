@@ -87,7 +87,7 @@ def biodiversity_metadata_ingestion():
                 "tempLocation": "gs://dataflow-staging-europe-west2-153439618737/tmp",
                 "machineType": "e2-medium",
                 "stagingLocation": "gs://dataflow-staging-europe-west2-153439618737/staging",
-                "sdkContainerImage": "europe-west2-docker.pkg.dev/prj-ext-prod-biodiv-data-in/apache-beam-pipelines/biodiversity_etl:latest"
+                "sdkContainerImage": "europe-west2-docker.pkg.dev/prj-ext-prod-biodiv-data-in/apache-beam-pipelines/my_base_image:20250129-124751"
             },
             "containerSpecGcsPath": "gs://prj-ext-prod-biodiv-data-in_cloudbuild/biodiversity_etl-20250129-124751.json"
         }
