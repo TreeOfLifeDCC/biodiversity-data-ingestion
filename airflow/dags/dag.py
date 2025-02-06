@@ -35,7 +35,7 @@ def get_metadata(study_id: str, project_name: str, bucket_name: str,
         for sample_id, record in metadata.items():
             file.write(f"{json.dumps(record)}\n")
 
-@task
+
 def start_apache_beam(biodiversity_project_name):
     gc_project_name = "prj-ext-prod-biodiv-data-in"
     region = "europe-west2"
