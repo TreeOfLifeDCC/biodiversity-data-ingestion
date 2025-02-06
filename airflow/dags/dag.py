@@ -36,23 +36,41 @@ def get_metadata(study_id: str, project_name: str, bucket_name: str, **kwargs) -
 
 
 @task
-def start_apache_beam_gbdp(**kwargs) -> None:
-    print("DONE")
+def start_apache_beam(biodiversity_project_name) -> None:
+    gc_project_name = "prj-ext-prod-biodiv-data-in"
+    region = "europe-west2"
+    body = {
+        "launchParameter": {
+            "jobName": "biodiversity-ingestion-2025-02-06",
+            "parameters": {
+                "input_path": f"gs://{gc_project_name}-"
+                              f"{biodiversity_project_name}/*jsonl",
+                "output_path": f"gs://{gc_project_name}-"
+                               f"{biodiversity_project_name}",
+                "bq_dataset_name": biodiversity_project_name,
+            },
+            "environment": {
+                "tempLocation": "gs://dataflow-staging-europe-west2-"
+                                "153439618737/tmp",
+                "machineType": "e2-medium",
+                "stagingLocation": "gs://dataflow-staging-europe-west2-"
+                                   "153439618737/staging",
+                "sdkContainerImage": f"{region}-docker.pkg.dev/"
+                                     f"{gc_project_name}/apache-beam-pipelines/"
+                                     f"biodiversity_etl:20250206-121022"
+            },
+            "containerSpecGcsPath": f"gs://{gc_project_name}_cloudbuild/"
+                                    f"biodiversity_etl-20250206-121022.json"
+        }
+    }
+    DataflowStartFlexTemplateOperator(
+        task_id=f"start_ingestion_job_{biodiversity_project_name}",
+        project_id=gc_project_name,
+        body=body,
+        location=region,
+        wait_until_finished=True,
+    )
 
-
-@task
-def start_apache_beam_erga(**kwargs) -> None:
-    print("DONE")
-
-
-@task
-def start_apache_beam_dtol(**kwargs) -> None:
-    print("DONE")
-
-
-@task
-def start_apache_beam_asg(**kwargs) -> None:
-    print("DONE")
 
 
 @dag(
@@ -75,32 +93,8 @@ def biodiversity_metadata_ingestion():
                 study_id, project_name, bucket_name
             )
         )
-    body = {
-        "launchParameter": {
-            "jobName": "test-2025-01-30",
-            "parameters": {
-                "input_path": "gs://prj-ext-prod-biodiv-data-in-asg/*jsonl",
-                "output_path": "gs://prj-ext-prod-biodiv-data-in-asg",
-                "bq_dataset_name": "asg"
-            },
-            "environment" : {
-                "tempLocation": "gs://dataflow-staging-europe-west2-153439618737/tmp",
-                "machineType": "e2-medium",
-                "stagingLocation": "gs://dataflow-staging-europe-west2-153439618737/staging",
-                "sdkContainerImage": "europe-west2-docker.pkg.dev/prj-ext-prod-biodiv-data-in/apache-beam-pipelines/my_base_image:20250129-124751"
-            },
-            "containerSpecGcsPath": "gs://prj-ext-prod-biodiv-data-in_cloudbuild/biodiversity_etl-20250129-124751.json"
-        }
-    }
-    start_template_job = DataflowStartFlexTemplateOperator(
-        task_id="start_template_job",
-        project_id="prj-ext-prod-biodiv-data-in",
-        body=body,
-        location="europe-west2",
-        wait_until_finished=True,
-        )
 
-    asg_metadata_import_tasks >> start_template_job
+    asg_metadata_import_tasks >> start_apache_beam("asg")
 
 
 biodiversity_metadata_ingestion()
