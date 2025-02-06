@@ -46,18 +46,23 @@ def biodiversity_metadata_ingestion():
     This DAG builds BigQuery tables and ElasticSearch indexes for all
     biodiversity projects
     """
-
-    asg_metadata_import_tasks = []
-    for study_id, item in asg_projects.items():
-        project_name, bucket_name = item["project_name"], item["bucket_name"]
-        asg_metadata_import_tasks.append(
-            get_metadata.override(task_id=f"asg_{study_id}_get_metadata")(
-                study_id, project_name, bucket_name
+    for project_name, subprojects in {
+        'gbdp': gbdp_projects,
+        'erga': erga_projects,
+        'dtol': dtol_projects,
+        'asg': asg_projects}.items():
+        metadata_import_tasks = []
+        for study_id, item in subprojects.items():
+            subproject_name, bucket_name = item["project_name"], item[
+                "bucket_name"]
+            metadata_import_tasks.append(
+                get_metadata.override(
+                    task_id=f"{project_name}_{study_id}_get_metadata")(
+                    study_id, subproject_name, bucket_name
+                )
             )
-        )
-    start_ingestion_job_asg = start_apache_beam("asg")
-
-    asg_metadata_import_tasks >> start_ingestion_job_asg
+        start_ingestion_job = start_apache_beam(project_name)
+        metadata_import_tasks >> start_ingestion_job
 
 
 biodiversity_metadata_ingestion()
