@@ -16,7 +16,8 @@ from dependencies.biodiversity_projects import (
 
 
 @task
-def get_metadata(study_id: str, project_name: str, bucket_name: str, **kwargs) -> None:
+def get_metadata(study_id: str, project_name: str, bucket_name: str,
+                 **kwargs) -> None:
     from dependencies import collect_metadata_experiments_assemblies
 
     if "ERGA" in project_name:
@@ -34,9 +35,8 @@ def get_metadata(study_id: str, project_name: str, bucket_name: str, **kwargs) -
         for sample_id, record in metadata.items():
             file.write(f"{json.dumps(record)}\n")
 
-
 @task
-def start_apache_beam(biodiversity_project_name) -> None:
+def start_apache_beam(biodiversity_project_name):
     gc_project_name = "prj-ext-prod-biodiv-data-in"
     region = "europe-west2"
     body = {
@@ -63,14 +63,13 @@ def start_apache_beam(biodiversity_project_name) -> None:
                                     f"biodiversity_etl-20250206-121022.json"
         }
     }
-    DataflowStartFlexTemplateOperator(
+    return DataflowStartFlexTemplateOperator(
         task_id=f"start_ingestion_job_{biodiversity_project_name}",
         project_id=gc_project_name,
         body=body,
         location=region,
         wait_until_finished=True,
     )
-
 
 
 @dag(
@@ -93,8 +92,9 @@ def biodiversity_metadata_ingestion():
                 study_id, project_name, bucket_name
             )
         )
+    start_ingestion_job_asg = start_apache_beam("asg")
 
-    asg_metadata_import_tasks >> start_apache_beam("asg")
+    asg_metadata_import_tasks >> start_ingestion_job_asg
 
 
 biodiversity_metadata_ingestion()
