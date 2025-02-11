@@ -1,7 +1,7 @@
 import pendulum
 import json
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
@@ -51,6 +51,7 @@ def biodiversity_metadata_ingestion():
     biodiversity projects
     """
     date_prefix = datetime.today().strftime("%Y-%m-%d")
+    yesterday_day_prefix = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
     for project_name, subprojects in {
         'gbdp': gbdp_projects,
         'erga': erga_projects,
@@ -82,9 +83,9 @@ def biodiversity_metadata_ingestion():
 
         base_url = f"https://elastic:{password}@{host}"
 
-        create_data_portal_index_command = f"curl -X PUT '{base_url}/{date_prefix}_data_portal?pretty' -H 'Content-Type: application/json' -d '{settings}'"
-        create_tracking_status_index_command = f"curl -X PUT '{base_url}/{date_prefix}_tracking_status?pretty' -H 'Content-Type: application/json' -d '{settings}'"
-        create_specimens_index_command = f"curl -X PUT '{base_url}/{date_prefix}_specimens?pretty' -H 'Content-Type: application/json' -d '{settings}'"
+        create_data_portal_index_command = f"curl -X PUT '{base_url}/{date_prefix}_data_portal' -H 'Content-Type: application/json' -d '{settings}'"
+        create_tracking_status_index_command = f"curl -X PUT '{base_url}/{date_prefix}_tracking_status' -H 'Content-Type: application/json' -d '{settings}'"
+        create_specimens_index_command = f"curl -X PUT '{base_url}/{date_prefix}_specimens' -H 'Content-Type: application/json' -d '{settings}'"
 
         add_data_portal_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_data_portal/_mapping' -H 'Content-Type: application/json' -d '{data_portal_mapping}'"
         add_tracking_status_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_tracking_status/_mapping' -H 'Content-Type: application/json' -d '{tracking_status_mapping}'"
@@ -111,6 +112,31 @@ def biodiversity_metadata_ingestion():
          ) >> start_ingestion_job
 
         metadata_import_tasks >> start_ingestion_job
+
+        change_aliases_json = {
+            "actions": [
+                {
+                    "add": {
+                        "index": f"{date_prefix}_data_portal",
+                        "alias": "data_portal",
+                    }
+                },
+                {
+                    "add": {
+                        "index": f"{date_prefix}_tracking_status",
+                        "alias": "tracking_status",
+                    }
+                },
+                {
+                    "add": {
+                        "index": f"{date_prefix}_specimens",
+                        "alias": "specimens",
+                    }
+                }
+            ]
+        }
+        change_aliases_command = f"curl -X PUT '{base_url}/_aliases' -H 'Content-Type: application/json' -d '{change_aliases_json}'"
+        change_aliases_command << start_ingestion_job
 
 
 
