@@ -150,7 +150,8 @@ def biodiversity_metadata_ingestion():
         )
         change_aliases_task << start_ingestion_job
         change_aliases_task >> additional_task.override(
-            task_id=f"{project_name}-additional-task")(host, password)
+            task_id=f"{project_name}-additional-task")(host, password,
+                                                       project_name)
 
 
 biodiversity_metadata_ingestion()
