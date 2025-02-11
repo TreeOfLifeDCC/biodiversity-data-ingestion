@@ -2,6 +2,7 @@ import pendulum
 import json
 
 from datetime import datetime, timedelta
+from elasticsearch import Elasticsearch
 
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
@@ -16,6 +17,58 @@ from dependencies.biodiversity_projects import (
 )
 
 from dependencies.common_functions import start_apache_beam
+
+
+@task
+def update_summary_index(host: str, password: str):
+    data_portal_aggregations = [
+        "biosamples", "raw_data", "mapped_reads", "assemblies_status",
+        "annotation_status", "annotation_complete", "project_name",
+        "symbionts_assemblies_status", "symbionts_biosamples_status",
+        "symbionts_raw_data_status"]
+    es = Elasticsearch(
+        [f"https://{host}"],
+        http_auth=("elastic", password))
+    body = dict()
+    body["aggs"] = dict()
+    for aggregation_field in data_portal_aggregations:
+        body["aggs"][aggregation_field] = {
+            "terms": {"field": aggregation_field, "size": 20}
+        }
+        body["aggs"]["taxonomies"] = {
+            "nested": {"path": f"taxonomies.kingdom"},
+            "aggs": {"kingdom": {
+                "terms": {"field": f"taxonomies.kingdom.scientificName"}}
+            }
+        }
+    results = es.search(index="data_portal", body=body)
+    names_mapping = {
+        "biosamples": "BioSamples - Submitted",
+        "raw_data": "Raw Data - Submitted",
+        "assemblies_status": "Assebmlies - Submitted",
+        "annotation_complete": "Annotation Complete"
+    }
+    summary = dict()
+    for key, aggs in results["aggregations"].items():
+        try:
+            for bucket in aggs["buckets"]:
+                if bucket['key'] == 'Done':
+                    if key in names_mapping:
+                        summary.setdefault("status", {})
+                        summary["status"][names_mapping[key]] = bucket[
+                            'doc_count']
+                elif bucket['key'] != 'Waiting' and "symbionts" not in key:
+                    summary.setdefault("projects", {})
+                    summary["projects"][bucket["key"]] = bucket['doc_count']
+                elif bucket['key'] != 'Waiting' and "symbionts" in key:
+                    summary.setdefault("status", {})
+                    summary["status"][f"Symbionts {bucket['key']}"] = bucket[
+                        'doc_count']
+        except KeyError:
+            for bucket in aggs["kingdom"]["buckets"]:
+                summary.setdefault("phylogeny", {})
+                summary["phylogeny"][bucket['key']] = bucket['doc_count']
+    es.index("summary_test", summary, id="summary")
 
 
 @task
@@ -51,7 +104,8 @@ def biodiversity_metadata_ingestion():
     biodiversity projects
     """
     date_prefix = datetime.today().strftime("%Y-%m-%d")
-    yesterday_day_prefix = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+    yesterday_day_prefix = (datetime.today() - timedelta(days=1)).strftime(
+        "%Y-%m-%d")
     for project_name, subprojects in {
         'gbdp': gbdp_projects,
         'erga': erga_projects,
@@ -94,21 +148,21 @@ def biodiversity_metadata_ingestion():
         (BashOperator(
             task_id=f"{project_name}-create-data-portal-index",
             bash_command=create_data_portal_index_command) >>
-        BashOperator(
+         BashOperator(
              task_id=f"{project_name}-add-mapping-data-portal-index",
              bash_command=add_data_portal_mapping_command),
-        BashOperator(
-            task_id=f"{project_name}-create-tracking-status-index",
-            bash_command=create_tracking_status_index_command) >>
-        BashOperator(
-            task_id=f"{project_name}-add-mapping-tracking-status-index",
-            bash_command=add_tracking_status_mapping_command),
-        BashOperator(
-            task_id=f"{project_name}-create-specimens-index",
-            bash_command=create_specimens_index_command) >>
-        BashOperator(
-            task_id=f"{project_name}-add-mapping-specimens-index",
-            bash_command=add_specimens_mapping_command)
+         BashOperator(
+             task_id=f"{project_name}-create-tracking-status-index",
+             bash_command=create_tracking_status_index_command) >>
+         BashOperator(
+             task_id=f"{project_name}-add-mapping-tracking-status-index",
+             bash_command=add_tracking_status_mapping_command),
+         BashOperator(
+             task_id=f"{project_name}-create-specimens-index",
+             bash_command=create_specimens_index_command) >>
+         BashOperator(
+             task_id=f"{project_name}-add-mapping-specimens-index",
+             bash_command=add_specimens_mapping_command)
          ) >> start_ingestion_job
 
         metadata_import_tasks >> start_ingestion_job
@@ -136,11 +190,13 @@ def biodiversity_metadata_ingestion():
             ]
         }
         change_aliases_command = f"curl -X PUT '{base_url}/_aliases' -H 'Content-Type: application/json' -d '{change_aliases_json}'"
-        BashOperator(
+        change_aliases_task = BashOperator(
             task_id=f"{project_name}-change-aliases",
             bash_command=change_aliases_command
-        ) << start_ingestion_job
-
+        )
+        change_aliases_task << start_ingestion_job
+        if project_name == "ERGA":
+            change_aliases_task >> update_summary_index(host, password)
 
 
 biodiversity_metadata_ingestion()
