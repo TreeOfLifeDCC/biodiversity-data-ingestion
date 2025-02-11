@@ -195,8 +195,8 @@ def biodiversity_metadata_ingestion():
             bash_command=change_aliases_command
         )
         change_aliases_task << start_ingestion_job
-        if project_name == "ERGA":
-            change_aliases_task >> update_summary_index(host, password)
+        change_aliases_task >> update_summary_index(host, password)
+
 
 
 biodiversity_metadata_ingestion()
