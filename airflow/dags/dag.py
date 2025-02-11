@@ -90,21 +90,23 @@ def biodiversity_metadata_ingestion():
         add_tracking_status_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_tracking_status/_mapping' -H 'Content-Type: application/json' -d '{tracking_status_mapping}'"
         add_specimens_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_specimens/_mapping' -H 'Content-Type: application/json' -d '{specimens_mapping}'"
 
-        [
+        create_index = [
             BashOperator(task_id="create-data-portal-index",
                          bash_command=create_data_portal_index_command),
             BashOperator(task_id="create-tracking-status-index",
                          bash_command=create_tracking_status_index_command),
             BashOperator(task_id="create-specimens-index",
                          bash_command=create_specimens_index_command)
-        ] >> [
+        ]
+        add_mapping = [
             BashOperator(task_id="add-mapping-data-portal-index",
                          bash_command=add_data_portal_mapping_command),
             BashOperator(task_id="add-mapping-tracking-status-index",
                          bash_command=add_tracking_status_mapping_command),
             BashOperator(task_id="add-mapping-specimens-index",
                          bash_command=add_specimens_mapping_command)
-        ] >> metadata_import_tasks >> start_ingestion_job
+        ]
+        create_index >> add_mapping >> metadata_import_tasks >> start_ingestion_job
 
 
 
