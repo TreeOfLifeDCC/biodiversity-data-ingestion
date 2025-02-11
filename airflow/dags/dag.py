@@ -1,8 +1,12 @@
 import pendulum
 import json
 
+from datetime import datetime
+
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
+from airflow.models import Variable
+from airflow.operators.bash import BashOperator
 
 from dependencies.biodiversity_projects import (
     gbdp_projects,
@@ -46,6 +50,7 @@ def biodiversity_metadata_ingestion():
     This DAG builds BigQuery tables and ElasticSearch indexes for all
     biodiversity projects
     """
+    date_prefix = datetime.today().strftime("%Y-%m-%d")
     for project_name, subprojects in {
         'gbdp': gbdp_projects,
         'erga': erga_projects,
@@ -62,7 +67,45 @@ def biodiversity_metadata_ingestion():
                 )
             )
         start_ingestion_job = start_apache_beam(project_name)
-        metadata_import_tasks >> start_ingestion_job
+
+        # Get Elasticsearch variables
+        host = Variable.get(f"{project_name}_elasticsearch_host")
+        password = Variable.get(f"{project_name}_elasticsearch_password")
+        settings = json.dumps(
+            Variable.get("elasticsearch_settings", deserialize_json=True))
+        data_portal_mapping = Variable.get(
+            f"{project_name}_elasticsearch_data_portal_mapping")
+        tracking_status_mapping = Variable.get(
+            f"{project_name}_elasticsearch_tracking_status_mapping")
+        specimens_mapping = Variable.get(
+            f"{project_name}_elasticsearch_specimens_mapping")
+
+        base_url = f"https://elastic:{password}@{host}"
+
+        create_data_portal_index_command = f"curl -X PUT '{base_url}/{date_prefix}_data_portal?pretty' -H 'Content-Type: application/json' -d '{settings}'"
+        create_tracking_status_index_command = f"curl -X PUT '{base_url}/{date_prefix}_tracking_status?pretty' -H 'Content-Type: application/json' -d '{settings}'"
+        create_specimens_index_command = f"curl -X PUT '{base_url}/{date_prefix}_specimens?pretty' -H 'Content-Type: application/json' -d '{settings}'"
+
+        add_data_portal_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_data_portal/_mapping' -H 'Content-Type: application/json' -d '{data_portal_mapping}'"
+        add_tracking_status_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_tracking_status/_mapping' -H 'Content-Type: application/json' -d '{tracking_status_mapping}'"
+        add_specimens_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_specimens/_mapping' -H 'Content-Type: application/json' -d '{specimens_mapping}'"
+
+        [
+            BashOperator(task_id="create-data-portal-index",
+                         bash_command=create_data_portal_index_command),
+            BashOperator(task_id="create-tracking-status-index",
+                         bash_command=create_tracking_status_index_command),
+            BashOperator(task_id="create-specimens-index",
+                         bash_command=create_specimens_index_command)
+        ] >> [
+            BashOperator(task_id="add-mapping-data-portal-index",
+                         bash_command=add_data_portal_mapping_command),
+            BashOperator(task_id="add-mapping-tracking-status-index",
+                         bash_command=add_tracking_status_mapping_command),
+            BashOperator(task_id="add-mapping-specimens-index",
+                         bash_command=add_specimens_mapping_command)
+        ] >> metadata_import_tasks >> start_ingestion_job
+
 
 
 biodiversity_metadata_ingestion()
