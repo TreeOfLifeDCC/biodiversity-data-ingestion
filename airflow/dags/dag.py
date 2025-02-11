@@ -20,9 +20,15 @@ from dependencies.common_functions import start_apache_beam
 
 @task
 def additional_task(host: str, password: str, project_name: str, **kwargs):
-    from dependencies import update_summary_index
-    if project_name == "ERGA":
+    from dependencies import update_summary_index, update_articles_index, \
+        import_mgnify_data
+    if project_name == "erga":
         update_summary_index.update_summary_index(host=host, password=password)
+    elif project_name == "dtol":
+        update_articles_index.update_articles_index(host=host,
+                                                    password=password)
+    elif project_name == "asg":
+        import_mgnify_data.main(host=host, password=password)
 
 
 @task
@@ -91,13 +97,39 @@ def biodiversity_metadata_ingestion():
 
         base_url = f"https://elastic:{password}@{host}"
 
-        create_data_portal_index_command = f"curl -X PUT '{base_url}/{date_prefix}_data_portal' -H 'Content-Type: application/json' -d '{settings}'"
-        create_tracking_status_index_command = f"curl -X PUT '{base_url}/{date_prefix}_tracking_status' -H 'Content-Type: application/json' -d '{settings}'"
-        create_specimens_index_command = f"curl -X PUT '{base_url}/{date_prefix}_specimens' -H 'Content-Type: application/json' -d '{settings}'"
+        create_data_portal_index_command = (f"curl -X PUT '{base_url}/"
+                                            f"{date_prefix}_data_portal' "
+                                            f"-H 'Content-Type: "
+                                            f"application/json' "
+                                            f"-d '{settings}'")
+        create_tracking_status_index_command = (f"curl -X PUT '{base_url}/"
+                                                f"{date_prefix}_"
+                                                f"tracking_status' "
+                                                f"-H 'Content-Type: "
+                                                f"application/json' "
+                                                f"-d '{settings}'")
+        create_specimens_index_command = (f"curl -X PUT '{base_url}/"
+                                          f"{date_prefix}_specimens' "
+                                          f"-H 'Content-Type: "
+                                          f"application/json' -d '{settings}'")
 
-        add_data_portal_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_data_portal/_mapping' -H 'Content-Type: application/json' -d '{data_portal_mapping}'"
-        add_tracking_status_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_tracking_status/_mapping' -H 'Content-Type: application/json' -d '{tracking_status_mapping}'"
-        add_specimens_mapping_command = f"curl -X PUT '{base_url}/{date_prefix}_specimens/_mapping' -H 'Content-Type: application/json' -d '{specimens_mapping}'"
+        add_data_portal_mapping_command = (f"curl -X PUT '{base_url}/"
+                                           f"{date_prefix}_data_portal/"
+                                           f"_mapping' "
+                                           f"-H 'Content-Type: "
+                                           f"application/json' "
+                                           f"-d '{data_portal_mapping}'")
+        add_tracking_status_mapping_command = (f"curl -X PUT '{base_url}/"
+                                               f"{date_prefix}_tracking_status/"
+                                               f"_mapping' "
+                                               f"-H 'Content-Type: "
+                                               f"application/json' "
+                                               f"-d '{tracking_status_mapping}'"
+                                               )
+        add_specimens_mapping_command = (f"curl -X PUT '{base_url}/"
+                                         f"{date_prefix}_specimens/_mapping' "
+                                         f"-H 'Content-Type: application/json' "
+                                         f"-d '{specimens_mapping}'")
 
         (BashOperator(
             task_id=f"{project_name}-create-data-portal-index",
@@ -130,8 +162,20 @@ def biodiversity_metadata_ingestion():
                     }
                 },
                 {
+                    "remove": {
+                        "index": f"{yesterday_day_prefix}_data_portal",
+                        "alias": "data_portal",
+                    }
+                },
+                {
                     "add": {
                         "index": f"{date_prefix}_tracking_status",
+                        "alias": "tracking_status",
+                    }
+                },
+                {
+                    "remove": {
+                        "index": f"{yesterday_day_prefix}_tracking_status",
                         "alias": "tracking_status",
                     }
                 },
@@ -140,10 +184,18 @@ def biodiversity_metadata_ingestion():
                         "index": f"{date_prefix}_specimens",
                         "alias": "specimens",
                     }
+                },
+                {
+                    "remove": {
+                        "index": f"{yesterday_day_prefix}_specimens",
+                        "alias": "specimens",
+                    }
                 }
             ]
         }
-        change_aliases_command = f"curl -X PUT '{base_url}/_aliases' -H 'Content-Type: application/json' -d '{change_aliases_json}'"
+        change_aliases_command = (f"curl -X PUT '{base_url}/_aliases' "
+                                  f"-H 'Content-Type: application/json' "
+                                  f"-d '{change_aliases_json}'")
         change_aliases_task = BashOperator(
             task_id=f"{project_name}-change-aliases",
             bash_command=change_aliases_command
