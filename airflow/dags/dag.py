@@ -149,9 +149,8 @@ def biodiversity_metadata_ingestion():
             bash_command=change_aliases_command
         )
         change_aliases_task << start_ingestion_job
-        if project_name == "ERGA":
-            change_aliases_task >> additional_task.override(
-                task_id=f"{project_name}-additional-task")(host, password)
+        change_aliases_task >> additional_task.override(
+            task_id=f"{project_name}-additional-task")(host, password)
 
 
 biodiversity_metadata_ingestion()
