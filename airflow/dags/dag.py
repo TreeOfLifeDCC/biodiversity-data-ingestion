@@ -2,7 +2,6 @@ import pendulum
 import json
 
 from datetime import datetime, timedelta
-from elasticsearch import Elasticsearch
 
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
@@ -20,55 +19,10 @@ from dependencies.common_functions import start_apache_beam
 
 
 @task
-def update_summary_index(host: str, password: str, **kwargs):
-    data_portal_aggregations = [
-        "biosamples", "raw_data", "mapped_reads", "assemblies_status",
-        "annotation_status", "annotation_complete", "project_name",
-        "symbionts_assemblies_status", "symbionts_biosamples_status",
-        "symbionts_raw_data_status"]
-    es = Elasticsearch(
-        [f"https://{host}"],
-        http_auth=("elastic", password))
-    body = dict()
-    body["aggs"] = dict()
-    for aggregation_field in data_portal_aggregations:
-        body["aggs"][aggregation_field] = {
-            "terms": {"field": aggregation_field, "size": 20}
-        }
-        body["aggs"]["taxonomies"] = {
-            "nested": {"path": f"taxonomies.kingdom"},
-            "aggs": {"kingdom": {
-                "terms": {"field": f"taxonomies.kingdom.scientificName"}}
-            }
-        }
-    results = es.search(index="data_portal", body=body)
-    names_mapping = {
-        "biosamples": "BioSamples - Submitted",
-        "raw_data": "Raw Data - Submitted",
-        "assemblies_status": "Assebmlies - Submitted",
-        "annotation_complete": "Annotation Complete"
-    }
-    summary = dict()
-    for key, aggs in results["aggregations"].items():
-        try:
-            for bucket in aggs["buckets"]:
-                if bucket['key'] == 'Done':
-                    if key in names_mapping:
-                        summary.setdefault("status", {})
-                        summary["status"][names_mapping[key]] = bucket[
-                            'doc_count']
-                elif bucket['key'] != 'Waiting' and "symbionts" not in key:
-                    summary.setdefault("projects", {})
-                    summary["projects"][bucket["key"]] = bucket['doc_count']
-                elif bucket['key'] != 'Waiting' and "symbionts" in key:
-                    summary.setdefault("status", {})
-                    summary["status"][f"Symbionts {bucket['key']}"] = bucket[
-                        'doc_count']
-        except KeyError:
-            for bucket in aggs["kingdom"]["buckets"]:
-                summary.setdefault("phylogeny", {})
-                summary["phylogeny"][bucket['key']] = bucket['doc_count']
-    es.index("summary_test", summary, id="summary")
+def additional_task(host: str, password: str, project_name: str, **kwargs):
+    from dependencies import update_summary_index
+    if project_name == "ERGA":
+        update_summary_index.update_summary_index(host=host, password=password)
 
 
 @task
@@ -196,9 +150,8 @@ def biodiversity_metadata_ingestion():
         )
         change_aliases_task << start_ingestion_job
         if project_name == "ERGA":
-            change_aliases_task >> update_summary_index.override(
-                task_id="Updating Summary Index")(host, password)
-
+            change_aliases_task >> additional_task.override(
+                task_id=f"{project_name}-additional-task")(host, password)
 
 
 biodiversity_metadata_ingestion()
