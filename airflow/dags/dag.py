@@ -20,7 +20,7 @@ from dependencies.common_functions import start_apache_beam
 
 
 @task
-def update_summary_index(host: str, password: str):
+def update_summary_index(host: str, password: str, **kwargs):
     data_portal_aggregations = [
         "biosamples", "raw_data", "mapped_reads", "assemblies_status",
         "annotation_status", "annotation_complete", "project_name",
@@ -195,7 +195,9 @@ def biodiversity_metadata_ingestion():
             bash_command=change_aliases_command
         )
         change_aliases_task << start_ingestion_job
-        change_aliases_task >> update_summary_index(host, password)
+        if project_name == "ERGA":
+            change_aliases_task >> update_summary_index.override(
+                task_id="Updating Summary Index")(host, password)
 
 
 
