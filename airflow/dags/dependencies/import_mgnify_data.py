@@ -4,7 +4,6 @@ from aiohttp import ClientSession, ClientTimeout
 from elasticsearch import AsyncElasticsearch
 from datetime import datetime
 
-import datetime
 
 # Define a semaphore to limit concurrent API requests
 # the EBI Seach api allows only 99 requests at a time, but we are keeping the limit to 50 to be on the safe side
@@ -92,7 +91,7 @@ async def update_data_portal_index_production(es, date_prefix: str):
 
     try:
         print('Process started at ',
-              datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+              datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         data = await es.search(
             index=f'{date_prefix}_data_portal',
             size=1000,
@@ -111,4 +110,4 @@ async def update_data_portal_index_production(es, date_prefix: str):
         await asyncio.gather(*tasks)
 
     print('Process finished at ',
-          datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+          datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
