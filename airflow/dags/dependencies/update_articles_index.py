@@ -1,13 +1,15 @@
 import requests
 
 from elasticsearch import Elasticsearch
+from datetime import datetime
 
 
 def update_articles_index(host: str, password: str):
+    date_prefix = datetime.today().strftime("%Y-%m-%d")
     es = Elasticsearch(
         [f"https://{host}"],
         http_auth=("elastic", password))
-    data_portal = get_samples("data_portal", es)
+    data_portal = get_samples(f"{date_prefix}_data_portal", es)
     articles = list()
     for tax_id, record in data_portal.items():
         print(

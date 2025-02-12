@@ -193,17 +193,18 @@ def biodiversity_metadata_ingestion():
                 }
             ]
         }
-        change_aliases_command = (f"curl -X PUT '{base_url}/_aliases' "
-                                  f"-H 'Content-Type: application/json' "
-                                  f"-d '{change_aliases_json}'")
-        change_aliases_task = BashOperator(
-            task_id=f"{project_name}-change-aliases",
-            bash_command=change_aliases_command
-        )
-        change_aliases_task << start_ingestion_job
-        change_aliases_task >> additional_task.override(
-            task_id=f"{project_name}-additional-task")(host, password,
-                                                       project_name)
+        # change_aliases_command = (f"curl -X PUT '{base_url}/_aliases' "
+        #                           f"-H 'Content-Type: application/json' "
+        #                           f"-d '{change_aliases_json}'")
+        # change_aliases_task = BashOperator(
+        #     task_id=f"{project_name}-change-aliases",
+        #     bash_command=change_aliases_command
+        # )
+        # change_aliases_task << start_ingestion_job
+        # change_aliases_task >> additional_task.override(
+        #     task_id=f"{project_name}-additional-task")(host, password,
+        #                                                project_name)
+        additional_task.override(task_id=f"{project_name}-additional-task")(host, password, project_name) << start_ingestion_job
 
 
 biodiversity_metadata_ingestion()

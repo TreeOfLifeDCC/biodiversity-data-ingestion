@@ -1,4 +1,5 @@
 from elasticsearch import Elasticsearch
+from datetime import datetime
 
 DATA_PORTAL_AGGREGATIONS = [
     "biosamples", "raw_data", "mapped_reads", "assemblies_status",
@@ -8,6 +9,7 @@ DATA_PORTAL_AGGREGATIONS = [
 
 
 def update_summary_index(host: str, password: str):
+    date_prefix = datetime.today().strftime("%Y-%m-%d")
     es = Elasticsearch(
         [f"https://{host}"],
         http_auth=("elastic", password))
@@ -23,7 +25,7 @@ def update_summary_index(host: str, password: str):
                 "terms": {"field": f"taxonomies.kingdom.scientificName"}}
             }
         }
-    results = es.search(index="data_portal", body=body)
+    results = es.search(index=f"{date_prefix}_data_portal", body=body)
     names_mapping = {
         "biosamples": "BioSamples - Submitted",
         "raw_data": "Raw Data - Submitted",

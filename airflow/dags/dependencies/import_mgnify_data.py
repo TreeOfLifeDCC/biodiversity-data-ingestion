@@ -2,6 +2,8 @@ import asyncio
 import json
 from aiohttp import ClientSession, ClientTimeout
 from elasticsearch import AsyncElasticsearch
+from datetime import datetime
+
 import datetime
 
 # Define a semaphore to limit concurrent API requests
@@ -11,11 +13,13 @@ semaphore = asyncio.Semaphore(RATE_LIMIT)
 
 
 def main(host: str, password: str):
+    date_prefix = datetime.today().strftime("%Y-%m-%d")
     es = AsyncElasticsearch(
         [f"https://{host}"],
         http_auth=("elastic", password))
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(update_data_portal_index_production())
+    loop.run_until_complete(
+        update_data_portal_index_production(es, date_prefix))
 
 
 async def get_mgnify_study_id(session, biosample_id):
@@ -82,7 +86,7 @@ async def process_record(session, record):
                 print(f"Failed to update record {record['_id']}: {e}")
 
 
-async def update_data_portal_index_production():
+async def update_data_portal_index_production(es, date_prefix: str):
     filters = {'query': {'match_all': {}}}
     query = json.dumps(filters)
 
@@ -90,7 +94,7 @@ async def update_data_portal_index_production():
         print('Process started at ',
               datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         data = await es.search(
-            index='data_portal_test',
+            index=f'{date_prefix}_data_portal',
             size=1000,
             from_=0,
             track_total_hits=True,
