@@ -52,4 +52,4 @@ def update_summary_index(host: str, password: str):
             for bucket in aggs["kingdom"]["buckets"]:
                 summary.setdefault("phylogeny", {})
                 summary["phylogeny"][bucket['key']] = bucket['doc_count']
-    es.index("summary_test", summary, id="summary")
+    es.index(index="summary_test", body=summary, id="summary")
