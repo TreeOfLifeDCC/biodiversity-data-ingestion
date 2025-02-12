@@ -43,7 +43,7 @@ async def get_mgnify_study_id(session, biosample_id):
         semaphore.release()
 
 
-async def process_record(session, record):
+async def process_record(session, record, es):
     update_flag = False
     recordset = record['_source']
 
@@ -105,7 +105,7 @@ async def update_data_portal_index_production(es, date_prefix: str):
 
     timeout = ClientTimeout(total=30)
     async with ClientSession(timeout=timeout) as session:
-        tasks = [process_record(session, record) for record in
+        tasks = [process_record(session, record, es) for record in
                  data['hits']['hits']]
         await asyncio.gather(*tasks)
 
