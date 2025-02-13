@@ -158,37 +158,37 @@ def biodiversity_metadata_ingestion():
                 {
                     "add": {
                         "index": f"{date_prefix}_data_portal",
-                        "alias": "data_portal",
+                        "alias": "data_portal"
                     }
                 },
                 {
                     "remove": {
                         "index": f"{yesterday_day_prefix}_data_portal",
-                        "alias": "data_portal",
+                        "alias": "data_portal"
                     }
                 },
                 {
                     "add": {
                         "index": f"{date_prefix}_tracking_status",
-                        "alias": "tracking_status",
+                        "alias": "tracking_status"
                     }
                 },
                 {
                     "remove": {
-                        "index": f"{yesterday_day_prefix}_tracking_status",
-                        "alias": "tracking_status",
+                        f"index": f"{yesterday_day_prefix}_tracking_status",
+                        "alias": "tracking_status"
                     }
                 },
                 {
                     "add": {
-                        "index": f"{date_prefix}_specimens",
-                        "alias": "specimens",
+                        f"index": f"{date_prefix}_specimens",
+                        "alias": "specimens"
                     }
                 },
                 {
                     "remove": {
                         "index": f"{yesterday_day_prefix}_specimens",
-                        "alias": "specimens",
+                        "alias": "specimens"
                     }
                 }
             ]
@@ -204,7 +204,8 @@ def biodiversity_metadata_ingestion():
         # change_aliases_task >> additional_task.override(
         #     task_id=f"{project_name}-additional-task")(host, password,
         #                                                project_name)
-        additional_task.override(task_id=f"{project_name}-additional-task")(host, password, project_name) << start_ingestion_job
+        additional_task.override(task_id=f"{project_name}-additional-task")(
+            host, password, project_name) << start_ingestion_job
 
 
 biodiversity_metadata_ingestion()
