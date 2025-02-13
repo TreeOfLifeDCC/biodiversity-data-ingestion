@@ -209,10 +209,11 @@ def biodiversity_metadata_ingestion():
             task_id=f"{project_name}-change-aliases",
             bash_command=change_aliases_command
         )
-        change_aliases_task << start_ingestion_job
-        change_aliases_task >> additional_task.override(
+
+        (change_aliases_task << additional_task.override(
             task_id=f"{project_name}-additional-task")(host, password,
-                                                       project_name)
+                                                       project_name) <<
+         start_ingestion_job)
 
 
 biodiversity_metadata_ingestion()
