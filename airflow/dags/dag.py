@@ -153,59 +153,66 @@ def biodiversity_metadata_ingestion():
 
         metadata_import_tasks >> start_ingestion_job
 
+        if project_name == "dtol":
+            data_portal_alias_name = "data_portal"
+            tracking_status_alias_name = "tracking_status_index"
+            specimens_alias_name = "organisms_test"
+        else:
+            data_portal_alias_name = "data_portal"
+            tracking_status_alias_name = "tracking_status"
+            specimens_alias_name = "specimens"
+
         change_aliases_json = {
             "actions": [
                 {
                     "add": {
                         "index": f"{date_prefix}_data_portal",
-                        "alias": "data_portal"
+                        "alias": f"{data_portal_alias_name}"
                     }
                 },
                 {
                     "remove": {
                         "index": f"{yesterday_day_prefix}_data_portal",
-                        "alias": "data_portal"
+                        "alias": f"{data_portal_alias_name}"
                     }
                 },
                 {
                     "add": {
                         "index": f"{date_prefix}_tracking_status",
-                        "alias": "tracking_status"
+                        "alias": f"{tracking_status_alias_name}"
                     }
                 },
                 {
                     "remove": {
-                        f"index": f"{yesterday_day_prefix}_tracking_status",
-                        "alias": "tracking_status"
+                        "index": f"{yesterday_day_prefix}_tracking_status",
+                        "alias": f"{tracking_status_alias_name}"
                     }
                 },
                 {
                     "add": {
-                        f"index": f"{date_prefix}_specimens",
-                        "alias": "specimens"
+                        "index": f"{date_prefix}_specimens",
+                        "alias": f"{specimens_alias_name}"
                     }
                 },
                 {
                     "remove": {
                         "index": f"{yesterday_day_prefix}_specimens",
-                        "alias": "specimens"
+                        "alias": f"{specimens_alias_name}"
                     }
                 }
             ]
         }
-        # change_aliases_command = (f"curl -X PUT '{base_url}/_aliases' "
-        #                           f"-H 'Content-Type: application/json' "
-        #                           f"-d '{change_aliases_json}'")
-        # change_aliases_task = BashOperator(
-        #     task_id=f"{project_name}-change-aliases",
-        #     bash_command=change_aliases_command
-        # )
-        # change_aliases_task << start_ingestion_job
-        # change_aliases_task >> additional_task.override(
-        #     task_id=f"{project_name}-additional-task")(host, password,
-        #                                                project_name)
-        additional_task.override(task_id=f"{project_name}-additional-task")(
-            host, password, project_name) << start_ingestion_job
+        change_aliases_command = (f"curl -X PUT '{base_url}/_aliases' "
+                                  f"-H 'Content-Type: application/json' "
+                                  f"-d '{change_aliases_json}'")
+        change_aliases_task = BashOperator(
+            task_id=f"{project_name}-change-aliases",
+            bash_command=change_aliases_command
+        )
+        change_aliases_task << start_ingestion_job
+        change_aliases_task >> additional_task.override(
+            task_id=f"{project_name}-additional-task")(host, password,
+                                                       project_name)
 
 
 biodiversity_metadata_ingestion()
