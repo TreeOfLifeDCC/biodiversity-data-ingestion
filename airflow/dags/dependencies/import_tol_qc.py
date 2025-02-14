@@ -10,7 +10,7 @@ from elasticsearch import Elasticsearch, helpers
 
 
 def main(es_host: str, es_password: str):
-    es = Elasticsearch(hosts=[es_host],
+    es = Elasticsearch(hosts=[f"https://{es_host}"],
                        http_auth=("elasticsearch", es_password))
 
     tolqc_data = requests.get("https://tolqc.cog.sanger.ac.uk/data.json").json()
