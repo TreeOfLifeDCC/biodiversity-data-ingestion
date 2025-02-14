@@ -5,21 +5,28 @@
 Synchronously get tol qc data and put in ERGA API
 """
 import requests
+import logging
 from collections import defaultdict
 from elasticsearch import Elasticsearch, helpers
 
 
-def main(es_host: str, es_password: str):
+def main(es_host: str, es_password: str) -> None:
+    logging.info("Connecting to Elasticsearch")
     es = Elasticsearch(hosts=[f"https://{es_host}"],
                        http_auth=("elastic", es_password))
 
+    logging.info("Fetching tolqc data")
     tolqc_data = requests.get("https://tolqc.cog.sanger.ac.uk/data.json").json()
     tolqc_dict = defaultdict(list)
     actions = []
+
+    logging.info("Aggregating tol qc links under tax_id")
     for record in tolqc_data:
         link = (f"https://tolqc.cog.sanger.ac.uk/{record['group']}/"
                 f"{record['_name']}")
         tolqc_dict[record["taxon"]].append(link)
+
+    logging.info("Generating Elasticsearch actions for bulk update")
     for tax_id, links in tolqc_dict.items():
         body = {"tol_qc_links": links}
         actions.append({
@@ -29,6 +36,7 @@ def main(es_host: str, es_password: str):
             "_source": body
         })
     try:
+        logging.info("Starting bulk update")
         helpers.bulk(es, actions)
     except helpers.BulkIndexError as e:
-        print(e)
+        logging.warning(e)
