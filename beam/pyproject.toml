@@ -8,4 +8,6 @@ version = "1.0.0"
 dependencies = [
   "apache-beam[gcp]==2.62.0",
   "lxml",
+  "elasticsearch",
+  "google-cloud-secret-manager"
 ]

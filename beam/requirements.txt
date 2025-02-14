@@ -17,7 +17,9 @@ cachetools==5.5.1
     #   apache-beam
     #   google-auth
 certifi==2024.12.14
-    # via requests
+    # via
+    #   elastic-transport
+    #   requests
 charset-normalizer==3.4.1
     # via requests
 cloudpickle==2.2.1
@@ -36,6 +38,10 @@ docopt==0.6.2
     # via hdfs
 docstring-parser==0.16
     # via google-cloud-aiplatform
+elastic-transport==8.17.0
+    # via elasticsearch
+elasticsearch==8.17.1
+    # via biodiversity-data-ingestion (pyproject.toml)
 fastavro==1.10.0
     # via apache-beam
 fasteners==0.19
@@ -57,6 +63,7 @@ google-api-core[grpc]==2.24.0
     #   google-cloud-pubsublite
     #   google-cloud-recommendations-ai
     #   google-cloud-resource-manager
+    #   google-cloud-secret-manager
     #   google-cloud-spanner
     #   google-cloud-storage
     #   google-cloud-videointelligence
@@ -79,6 +86,7 @@ google-auth==2.38.0
     #   google-cloud-pubsub
     #   google-cloud-recommendations-ai
     #   google-cloud-resource-manager
+    #   google-cloud-secret-manager
     #   google-cloud-storage
     #   google-cloud-videointelligence
     #   google-cloud-vision
@@ -119,6 +127,8 @@ google-cloud-recommendations-ai==0.10.15
     # via apache-beam
 google-cloud-resource-manager==1.14.0
     # via google-cloud-aiplatform
+google-cloud-secret-manager==2.22.1
+    # via biodiversity-data-ingestion (pyproject.toml)
 google-cloud-spanner==3.51.0
     # via apache-beam
 google-cloud-storage==2.19.0
@@ -147,6 +157,7 @@ grpc-google-iam-v1==0.14.0
     #   google-cloud-bigtable
     #   google-cloud-pubsub
     #   google-cloud-resource-manager
+    #   google-cloud-secret-manager
     #   google-cloud-spanner
 grpc-interceptor==0.15.4
     # via google-cloud-spanner
@@ -241,6 +252,7 @@ proto-plus==1.25.0
     #   google-cloud-pubsub
     #   google-cloud-recommendations-ai
     #   google-cloud-resource-manager
+    #   google-cloud-secret-manager
     #   google-cloud-spanner
     #   google-cloud-videointelligence
     #   google-cloud-vision
@@ -257,6 +269,7 @@ protobuf==5.29.3
     #   google-cloud-pubsub
     #   google-cloud-recommendations-ai
     #   google-cloud-resource-manager
+    #   google-cloud-secret-manager
     #   google-cloud-spanner
     #   google-cloud-videointelligence
     #   google-cloud-vision
@@ -342,7 +355,9 @@ typing-extensions==4.12.2
     #   pydantic-core
     #   referencing
 urllib3==2.3.0
-    # via requests
+    # via
+    #   elastic-transport
+    #   requests
 wrapt==1.17.2
     # via deprecated
 zipp==3.21.0
