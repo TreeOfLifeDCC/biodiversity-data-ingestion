@@ -220,7 +220,7 @@ def biodiversity_metadata_ingestion():
         }
         change_aliases_command = (f"curl -X POST '{base_url}/_aliases' "
                                   f"-H 'Content-Type: application/json' "
-                                  f"-d '{change_aliases_json}'")
+                                  f"-d '{json.dumps(change_aliases_json)}'")
         change_aliases_task = BashOperator(
             task_id=f"{project_name}-change-aliases",
             bash_command=change_aliases_command
