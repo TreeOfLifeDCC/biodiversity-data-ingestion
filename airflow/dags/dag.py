@@ -55,7 +55,7 @@ def get_metadata(study_id: str, project_name: str, bucket_name: str,
 
 
 @dag(
-    schedule="0 0 * * *",
+    schedule="0 10 * * *",
     start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     catchup=False,
     tags=["biodiversity_metadata_ingestion"],
