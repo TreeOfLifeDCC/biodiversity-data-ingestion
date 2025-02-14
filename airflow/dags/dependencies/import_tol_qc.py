@@ -6,8 +6,10 @@ Synchronously get tol qc data and put in ERGA API
 """
 import requests
 import logging
+
 from collections import defaultdict
 from elasticsearch import Elasticsearch, helpers
+from urllib3.exceptions import ReadTimeoutError
 
 
 def main(es_host: str, es_password: str) -> None:
@@ -16,8 +18,12 @@ def main(es_host: str, es_password: str) -> None:
                        http_auth=("elastic", es_password))
 
     logging.info("Fetching tolqc data")
-    tolqc_data = requests.get("https://tolqc.cog.sanger.ac.uk/data.json",
-                              timeout=60).json()
+    try:
+        tolqc_data = requests.get("https://tolqc.cog.sanger.ac.uk/data.json", timeout=60).json()
+    except ReadTimeoutError:
+        logging.warning("Timeout while fetching tolqc data")
+        return
+
     tolqc_dict = defaultdict(list)
     actions = []
 
