@@ -9,7 +9,6 @@ import logging
 
 from collections import defaultdict
 from elasticsearch import Elasticsearch, helpers
-from urllib3.exceptions import ReadTimeoutError
 
 
 def main(es_host: str, es_password: str) -> None:
@@ -20,7 +19,7 @@ def main(es_host: str, es_password: str) -> None:
     logging.info("Fetching tolqc data")
     try:
         tolqc_data = requests.get("https://tolqc.cog.sanger.ac.uk/data.json", timeout=60).json()
-    except ReadTimeoutError:
+    except requests.exceptions.ReadTimeout:
         logging.warning("Timeout while fetching tolqc data")
         return
 

@@ -8,7 +8,6 @@ import logging
 import requests
 from collections import defaultdict
 from elasticsearch import Elasticsearch, helpers
-from urllib3.exceptions import ReadTimeoutError
 
 
 def main(es_host: str, es_password: str) -> None:
@@ -21,7 +20,7 @@ def main(es_host: str, es_password: str) -> None:
         images = requests.get(
             "https://ftp.ebi.ac.uk/biostudies/fire/S-BIAD/588/S-BIAD588/Files/"
             "09052024_dtol_reupload_file_list.json", timeout=60).json()
-    except ReadTimeoutError:
+    except requests.exceptions.ReadTimeout:
         logging.warning("Failed to fetch BioImage archive data")
         return
 
