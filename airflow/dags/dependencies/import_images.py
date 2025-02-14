@@ -11,7 +11,7 @@ from elasticsearch import Elasticsearch, helpers
 
 def main(es_host: str, es_password: str):
     es = Elasticsearch(hosts=[f"https://{es_host}"],
-                       http_auth=("elasticsearch", es_password))
+                       http_auth=("elastic", es_password))
 
     images = requests.get(
         "https://ftp.ebi.ac.uk/biostudies/fire/S-BIAD/588/S-BIAD588/Files/"
@@ -31,4 +31,7 @@ def main(es_host: str, es_password: str):
             "_id": nhmuk_id,
             "_source": body
         })
-    helpers.bulk(es, actions)
+    try:
+        helpers.bulk(es, actions)
+    except helpers.BulkIndexError as e:
+        print(e)

@@ -11,7 +11,7 @@ from elasticsearch import Elasticsearch, helpers
 
 def main(es_host: str, es_password: str):
     es = Elasticsearch(hosts=[f"https://{es_host}"],
-                       http_auth=("elasticsearch", es_password))
+                       http_auth=("elastic", es_password))
 
     tolqc_data = requests.get("https://tolqc.cog.sanger.ac.uk/data.json").json()
     tolqc_dict = defaultdict(list)
@@ -28,4 +28,7 @@ def main(es_host: str, es_password: str):
             "_id": tax_id,
             "_source": body
         })
-    helpers.bulk(es, actions)
+    try:
+        helpers.bulk(es, actions)
+    except helpers.BulkIndexError as e:
+        print(e)
