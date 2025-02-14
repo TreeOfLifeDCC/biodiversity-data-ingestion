@@ -16,7 +16,8 @@ def main(es_host: str, es_password: str) -> None:
                        http_auth=("elastic", es_password))
 
     logging.info("Fetching tolqc data")
-    tolqc_data = requests.get("https://tolqc.cog.sanger.ac.uk/data.json").json()
+    tolqc_data = requests.get("https://tolqc.cog.sanger.ac.uk/data.json",
+                              timeout=60).json()
     tolqc_dict = defaultdict(list)
     actions = []
 

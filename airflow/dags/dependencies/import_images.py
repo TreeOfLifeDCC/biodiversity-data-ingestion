@@ -18,7 +18,7 @@ def main(es_host: str, es_password: str) -> None:
     logging.info("Fetching BioImage archive data")
     images = requests.get(
         "https://ftp.ebi.ac.uk/biostudies/fire/S-BIAD/588/S-BIAD588/Files/"
-        "09052024_dtol_reupload_file_list.json").json()
+        "09052024_dtol_reupload_file_list.json", timeout=60).json()
 
     images_data = defaultdict(list)
     actions = []
