@@ -29,8 +29,8 @@ def update_summary_index(host: str, password: str):
     names_mapping = {
         "biosamples": "BioSamples - Submitted",
         "raw_data": "Raw Data - Submitted",
-        "assemblies_status": "Assebmlies - Submitted",
-        "annotation_complete": "Annotation Complete"
+        "assemblies_status": "Assemblies - Submitted",
+        "annotation_complete": "Annotation Complete - Done"
     }
     summary = dict()
     for key, aggs in results["aggregations"].items():
