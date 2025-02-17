@@ -78,8 +78,8 @@ def biodiversity_metadata_ingestion():
                                             "es_host": erga_host,
                                             "es_password": erga_password})
     date_prefix = datetime.today().strftime("%Y-%m-%d")
-    yesterday_day_prefix = (datetime.today() - timedelta(days=1)).strftime(
-        "%Y-%m-%d")
+    yesterday_day_prefix = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+    two_days_prefix = (datetime.today() - timedelta(days=2)).strftime("%Y-%m-%d")
     for project_name, subprojects in {
         'gbdp': gbdp_projects,
         'erga': erga_projects,
@@ -230,6 +230,28 @@ def biodiversity_metadata_ingestion():
             task_id=f"{project_name}-additional-task")(host, password,
                                                        project_name) <<
          start_ingestion_job)
+
+        remove_data_portal_index_command = (f"curl -X DELETE '{base_url}/"
+                                            f"{two_days_prefix}_data_portal'")
+        remove_tracking_status_index_command = (f"curl -X DELETE '{base_url}/"
+                                                f"{two_days_prefix}_tracking_status'")
+        remove_specimens_index_command = (f"curl -X DELETE '{base_url}/"
+                                          f"{two_days_prefix}_specimens'")
+        remove_data_portal_index_task = BashOperator(
+            task_id=f"{project_name}-remove-data-portal-index",
+            bash_command=remove_data_portal_index_command
+        )
+        remove_tracking_status_index_task = BashOperator(
+            task_id=f"{project_name}-remove-tracking-status-index",
+            bash_command=remove_tracking_status_index_command
+        )
+        remove_specimens_index_task = BashOperator(
+            task_id=f"{project_name}-remove-specimens-index",
+            bash_command=remove_specimens_index_command
+        )
+        change_aliases_task >> (remove_data_portal_index_task,
+                                remove_tracking_status_index_task,
+                                remove_specimens_index_task)
 
 
 biodiversity_metadata_ingestion()
