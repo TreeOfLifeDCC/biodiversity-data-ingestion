@@ -5,23 +5,8 @@ import io
 import requests
 import csv
 
-from datetime import datetime, timedelta
-
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
-from airflow.models import Variable
-from airflow.operators.bash import BashOperator
-from airflow.operators.python import PythonOperator
-
-from dependencies.biodiversity_projects import (
-    gbdp_projects,
-    erga_projects,
-    dtol_projects,
-    asg_projects,
-)
-
-from dependencies.common_functions import start_apache_beam
-from dependencies import import_tol_qc, import_images
 
 
 @task
@@ -51,7 +36,7 @@ def ingest_gtf(url: str) -> None:
 
 
 @dag(
-    schedule="* * * * *",
+    schedule_interval=None,
     start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
     catchup=False,
     tags=["biodiversity_annotations_ingestion"],
@@ -60,6 +45,8 @@ def biodiversity_annotations_ingestion():
     """
     This DAG downloads GTF files, format them into json files and upload to GCS
     """
-    ingest_gtf.override(task_id=f"test_ingest_gtf")("https://ftp.ensembl.org/pub/rapid-release/species/Bathymodiolus_brooksi/GCA_963680875.1/ensembl/geneset/2024_01/Bathymodiolus_brooksi-GCA_963680875.1-2024_01-genes.gtf.gz")
+    ingest_gtf.override(task_id=f"test_ingest_gtf")(
+        "https://ftp.ensembl.org/pub/rapid-release/species/Bathymodiolus_brooksi/GCA_963680875.1/ensembl/geneset/2024_01/Bathymodiolus_brooksi-GCA_963680875.1-2024_01-genes.gtf.gz")
+
 
 biodiversity_annotations_ingestion()
