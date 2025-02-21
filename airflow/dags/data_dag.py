@@ -63,7 +63,7 @@ def biodiversity_annotations_ingestion():
             url = annotation["annotation"]["GTF"]
             ingestion_id = url.split("/")[-1]
             ingest_gtf.override(task_id=f"{ingestion_id}_ingest_gtf")(
-                url=url, ingestion_id=ingestion_id)
+                url=url, file_id=ingestion_id)
 
 
 biodiversity_annotations_ingestion()
