@@ -70,7 +70,7 @@ def biodiversity_annotations_ingestion():
         for i, annotation in enumerate(record["_source"]["annotation"]):
             url = annotation["annotation"]["GTF"]
             file_id = url.split("/")[-1]
-            ingest_gtf.override(task_id=f"{i}_ingest_gtf")(
+            ingest_gtf.override(task_id=f"{file_id}_{i}_ingest_gtf")(
                 url=url, file_id=file_id)
 
 
