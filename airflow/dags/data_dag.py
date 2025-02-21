@@ -18,7 +18,7 @@ def ingest_gtf(url: str, file_id: str) -> None:
         "gs://google_cloud_default@prj-ext-prod-biodiv-data-in-gbdp/gtf_files")
     base.mkdir(exist_ok=True)
     gca_accession = url.split("/")[7]
-    path = base / f"{gca_accession}.jsonl"
+    path = base / f"{file_id}.jsonl"
     gtf_gz_file = requests.get(url, stream=True, timeout=30).content
     f = io.BytesIO(gtf_gz_file)
     with gzip.GzipFile(fileobj=f) as fh:
