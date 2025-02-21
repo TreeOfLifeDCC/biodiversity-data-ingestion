@@ -67,11 +67,11 @@ def biodiversity_annotations_ingestion():
     annotations_data = es_client.search(index="data_portal", body=search_body)
 
     for record in annotations_data["hits"]["hits"]:
-        for annotation in record["_source"]["annotation"]:
+        for i, annotation in enumerate(record["_source"]["annotation"]):
             url = annotation["annotation"]["GTF"]
-            ingestion_id = url.split("/")[-1]
-            ingest_gtf.override(task_id=f"{ingestion_id}_ingest_gtf")(
-                url=url, file_id=ingestion_id)
+            file_id = url.split("/")[-1]
+            ingest_gtf.override(task_id=f"{i}_ingest_gtf")(
+                url=url, file_id=file_id)
 
 
 biodiversity_annotations_ingestion()
