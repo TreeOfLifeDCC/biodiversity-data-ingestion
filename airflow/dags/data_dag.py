@@ -5,8 +5,11 @@ import io
 import requests
 import csv
 
+from elasticsearch import AsyncElasticsearch
+
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
+from airflow.models import Variable
 
 
 @task
@@ -45,20 +48,25 @@ def biodiversity_annotations_ingestion():
     """
     This DAG downloads GTF files, format them into json files and upload to GCS
     """
-    offset = 0
-    gbdp_response = requests.get(
-        f"https://www.ebi.ac.uk/biodiversity/api/data_portal?limit=1000&offset={offset}"
-        f"&filter=annotation_complete:Done").json()
-    results_length = len(gbdp_response["results"])
-    annotations_data = gbdp_response["results"]
-    while results_length != 0:
-        offset += 1000
-        gbdp_response = requests.get(
-            f"https://www.ebi.ac.uk/biodiversity/api/data_portal?limit=1000&offset="
-            f"{offset}&filter=annotation_complete:Done").json()
-        results_length = len(gbdp_response["results"])
-        annotations_data.extend(gbdp_response["results"])
-    for record in annotations_data:
+    gbdp_host = Variable.get("erga_elasticsearch_host")
+    gbdp_password = Variable.get("erga_elasticsearch_password")
+    es_client = AsyncElasticsearch(
+        [f"https://{gbdp_host}"],
+        http_auth=("elastic", gbdp_password),
+        verify_certs=True,
+    )
+    # TODO: add pagination to search
+    search_body = {
+        "size": 2000,
+        "query": {
+            "bool": {
+                "filter": [{"terms": {"currentStatus": ["Annotation Complete"]}}]
+            }
+        }
+    }
+    annotations_data = await es_client.search(index="data_portal", body=search_body)
+
+    for record in annotations_data["hits"]["hits"]:
         for annotation in record["_source"]["annotation"]:
             url = annotation["annotation"]["GTF"]
             ingestion_id = url.split("/")[-1]
