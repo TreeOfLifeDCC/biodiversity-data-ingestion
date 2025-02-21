@@ -5,7 +5,7 @@ import io
 import requests
 import csv
 
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import Elasticsearch
 
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
@@ -50,7 +50,7 @@ def biodiversity_annotations_ingestion():
     """
     gbdp_host = Variable.get("erga_elasticsearch_host")
     gbdp_password = Variable.get("erga_elasticsearch_password")
-    es_client = AsyncElasticsearch(
+    es_client = Elasticsearch(
         [f"https://{gbdp_host}"],
         http_auth=("elastic", gbdp_password),
         verify_certs=True,
@@ -64,7 +64,7 @@ def biodiversity_annotations_ingestion():
             }
         }
     }
-    annotations_data = await es_client.search(index="data_portal", body=search_body)
+    annotations_data = es_client.search(index="data_portal", body=search_body)
 
     for record in annotations_data["hits"]["hits"]:
         for annotation in record["_source"]["annotation"]:
