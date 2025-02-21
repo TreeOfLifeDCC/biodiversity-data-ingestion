@@ -48,8 +48,8 @@ def biodiversity_annotations_ingestion():
     """
     This DAG downloads GTF files, format them into json files and upload to GCS
     """
-    gbdp_host = Variable.get("erga_elasticsearch_host")
-    gbdp_password = Variable.get("erga_elasticsearch_password")
+    gbdp_host = Variable.get("gbdp_elasticsearch_host")
+    gbdp_password = Variable.get("gbdp_elasticsearch_password")
     es_client = Elasticsearch(
         [f"https://{gbdp_host}"],
         http_auth=("elastic", gbdp_password),
