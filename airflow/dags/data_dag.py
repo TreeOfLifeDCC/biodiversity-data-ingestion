@@ -13,7 +13,36 @@ from airflow.models import Variable
 
 
 @task
-def ingest_gtf(url: str, file_id: str) -> None:
+def generate_annotations_list():
+    annotations_list = []
+    gbdp_host = Variable.get("gbdp_elasticsearch_host")
+    gbdp_password = Variable.get("gbdp_elasticsearch_password")
+    es_client = Elasticsearch(
+        [f"https://{gbdp_host}"],
+        http_auth=("elastic", gbdp_password),
+        verify_certs=True,
+    )
+    # TODO: add pagination to search
+    search_body = {
+        "size": 2000,
+        "query": {
+            "bool": {
+                "filter": [{"terms": {"currentStatus": ["Annotation Complete"]}}]
+            }
+        }
+    }
+    annotations_data = es_client.search(index="data_portal", body=search_body)
+    for record in annotations_data["hits"]["hits"]:
+        for annotation in record["_source"]["annotation"]:
+            url = annotation["annotation"]["GTF"]
+            file_id = url.split("/")[-1]
+            annotations_list.append({"url": url, "file_id": file_id})
+    return annotations_list
+
+
+@task
+def ingest_gtf(arg) -> None:
+    url, file_id = arg["url"], arg["file_id"]
     base = ObjectStoragePath(
         "gs://google_cloud_default@prj-ext-prod-biodiv-data-in-gbdp/gtf_files")
     base.mkdir(exist_ok=True)
@@ -48,30 +77,7 @@ def biodiversity_annotations_ingestion():
     """
     This DAG downloads GTF files, format them into json files and upload to GCS
     """
-    gbdp_host = Variable.get("gbdp_elasticsearch_host")
-    gbdp_password = Variable.get("gbdp_elasticsearch_password")
-    es_client = Elasticsearch(
-        [f"https://{gbdp_host}"],
-        http_auth=("elastic", gbdp_password),
-        verify_certs=True,
-    )
-    # TODO: add pagination to search
-    search_body = {
-        "size": 2000,
-        "query": {
-            "bool": {
-                "filter": [{"terms": {"currentStatus": ["Annotation Complete"]}}]
-            }
-        }
-    }
-    annotations_data = es_client.search(index="data_portal", body=search_body)
-
-    for record in annotations_data["hits"]["hits"]:
-        for i, annotation in enumerate(record["_source"]["annotation"]):
-            url = annotation["annotation"]["GTF"]
-            file_id = url.split("/")[-1]
-            ingest_gtf.override(task_id=f"{file_id}_{i}_ingest_gtf")(
-                url=url, file_id=file_id)
+    ingest_gtf.expand(arg=generate_annotations_list())
 
 
 biodiversity_annotations_ingestion()
