@@ -13,7 +13,7 @@ from airflow.models import Variable
 
 
 @task
-def generate_annotations_list():
+def generate_annotations_list(offset: int):
     annotations_list = []
     gbdp_host = Variable.get("gbdp_elasticsearch_host")
     gbdp_password = Variable.get("gbdp_elasticsearch_password")
@@ -24,14 +24,15 @@ def generate_annotations_list():
     )
     # TODO: add pagination to search
     search_body = {
-        "size": 2000,
+        "size": 1000,
         "query": {
             "bool": {
                 "filter": [{"terms": {"currentStatus": ["Annotation Complete"]}}]
             }
         }
     }
-    annotations_data = es_client.search(index="data_portal", body=search_body)
+    annotations_data = es_client.search(index="data_portal", body=search_body,
+                                        from_=offset)
     for record in annotations_data["hits"]["hits"]:
         for annotation in record["_source"]["annotation"]:
             url = annotation["annotation"]["GTF"]
@@ -77,7 +78,8 @@ def biodiversity_annotations_ingestion():
     """
     This DAG downloads GTF files, format them into json files and upload to GCS
     """
-    ingest_gtf.expand(arg=generate_annotations_list())
+    (ingest_gtf.expand(arg=generate_annotations_list(0)) >>
+     ingest_gtf.expand(arg=generate_annotations_list(1000)))
 
 
 biodiversity_annotations_ingestion()
