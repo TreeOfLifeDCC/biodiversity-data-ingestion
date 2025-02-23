@@ -24,7 +24,7 @@ def generate_annotations_list(offset: int):
     )
     # TODO: add pagination to search
     search_body = {
-        "size": 1000,
+        "size": 500,
         "query": {
             "bool": {
                 "filter": [{"terms": {"currentStatus": ["Annotation Complete"]}}]
