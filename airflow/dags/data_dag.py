@@ -78,7 +78,10 @@ def biodiversity_annotations_ingestion():
     """
     This DAG downloads GTF files, format them into json files and upload to GCS
     """
-    ingest_gtf.expand(arg=generate_annotations_list(0))
+    (((ingest_gtf.expand(arg=generate_annotations_list(0)) >>
+     ingest_gtf.expand(arg=generate_annotations_list(500))) >>
+     ingest_gtf.expand(arg=generate_annotations_list(1000))) >>
+     ingest_gtf.expand(arg=generate_annotations_list(1500)))
 
 
 biodiversity_annotations_ingestion()
