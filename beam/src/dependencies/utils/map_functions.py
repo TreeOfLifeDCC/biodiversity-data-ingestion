@@ -268,7 +268,6 @@ def build_data_portal_record(element, bq_dataset_name):
 
     # host metadata
     sample['tax_id'] = element[0]
-    sample['commonName'] = element[1]['specimens'][0]['commonName']
     sample['currentStatus'] = 'Submitted to BioSamples'
 
     sample['experiment'], sample['assemblies'], sample['analyses'], sample[
@@ -309,6 +308,8 @@ def build_data_portal_record(element, bq_dataset_name):
     try:
         sample['commonName'] = root.find('taxon').get('commonName')
     except AttributeError:
+        sample['commonName'] = element[1]['specimens'][0]['commonName']
+    if sample['commonName'] is None:
         sample['commonName'] = element[1]['specimens'][0]['commonName']
     sample['commonNameSource'] = 'NCBI_taxon'
 
@@ -588,6 +589,8 @@ def build_dwh_record(element, bq_dataset_name):
     try:
         sample['common_name'] = root.find('taxon').get('commonName')
     except AttributeError:
+        sample['common_name'] = element[1]['specimens'][0]['commonName']
+    if sample['common_name'] is None:
         sample['common_name'] = element[1]['specimens'][0]['commonName']
     sample['current_status'] = 'Submitted to BioSamples'
     sample['organisms'] = []
