@@ -387,7 +387,7 @@ def build_data_portal_record(element, bq_dataset_name):
             f"https://portal.aquaticsymbiosisgenomics.org/api/annotation/{sample['tax_id']}").json()
     elif bq_dataset_name == 'gbdp':
         annotation_response = requests.get(
-            f"https://www.ebi.ac.uk/biodiversity/api/annotation/{sample['tax_id']}").json()
+            f"https://portal.erga-biodiversity.eu/api/gbdp_annotation/{sample['tax_id']}").json()
     else:
         if sample['tax_id'] == '876063_3126489':
             annotation_response = requests.get(
@@ -704,7 +704,7 @@ def build_dwh_record(element, bq_dataset_name):
             f"https://portal.aquaticsymbiosisgenomics.org/api/annotation/{sample['tax_id']}").json()
     elif bq_dataset_name == "gbdp":
         annotation_response = requests.get(
-            f"https://www.ebi.ac.uk/biodiversity/api/annotation/{sample['tax_id']}").json()
+            f"https://portal.erga-biodiversity.eu/api/gbdp_annotation/{sample['tax_id']}").json()
     else:
         if sample['tax_id'] == '876063_3126489':
             annotation_response = requests.get(
