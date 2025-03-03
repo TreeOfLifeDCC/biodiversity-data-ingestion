@@ -24,10 +24,10 @@ def start_apache_beam(biodiversity_project_name):
                                    "153439618737/staging",
                 "sdkContainerImage": f"{region}-docker.pkg.dev/"
                                      f"{gc_project_name}/apache-beam-pipelines/"
-                                     f"biodiversity_etl:20250226-112945"
+                                     f"biodiversity_etl:20250303-084019"
             },
             "containerSpecGcsPath": f"gs://{gc_project_name}_cloudbuild/"
-                                    f"biodiversity_etl-20250226-112945.json"
+                                    f"biodiversity_etl-20250303-084019.json"
         }
     }
     return DataflowStartFlexTemplateOperator(
