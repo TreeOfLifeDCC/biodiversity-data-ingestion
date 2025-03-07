@@ -8,7 +8,7 @@ def start_apache_beam(biodiversity_project_name):
     region = "europe-west2"
     body = {
         "launchParameter": {
-            "jobName": "biodiversity-ingestion-2025-02-25",
+            "jobName": "biodiversity-ingestion-2025-03-07",
             "parameters": {
                 "input_path": f"gs://{gc_project_name}-"
                               f"{biodiversity_project_name}/*jsonl",
@@ -24,10 +24,10 @@ def start_apache_beam(biodiversity_project_name):
                                    "153439618737/staging",
                 "sdkContainerImage": f"{region}-docker.pkg.dev/"
                                      f"{gc_project_name}/apache-beam-pipelines/"
-                                     f"biodiversity_etl:20250303-084019"
+                                     f"biodiversity_etl:20250307-105631"
             },
             "containerSpecGcsPath": f"gs://{gc_project_name}_cloudbuild/"
-                                    f"biodiversity_etl-20250303-084019.json"
+                                    f"biodiversity_etl-20250307-105631.json"
         }
     }
     return DataflowStartFlexTemplateOperator(
