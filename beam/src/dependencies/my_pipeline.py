@@ -30,7 +30,7 @@ def biodiversity_etl(bq_dataset_name: str, input_path: str, output_path: str,
             | "Read data from JSON file" >> beam.io.ReadFromText(input_path)
             | "Parse Json" >> beam.Map(lambda sample: json.loads(sample))
             | "Classify Samples" >> beam.Map(classify_samples).with_outputs(
-        "Symbionts", "Metagenomes", main="Specimens")
+        "Symbionts", "Metagenomes", "Errors", main="Specimens")
     )
 
     specimens_collection = classified_samples.Specimens

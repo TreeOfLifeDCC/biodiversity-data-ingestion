@@ -26,7 +26,10 @@ def classify_samples(sample):
         sample (dict[str, str|dict|list]): classified sample
     """
     error_sample = dict()
-    error_sample['biosample_id'] = sample["accession"]
+    try:
+        error_sample['biosample_id'] = sample["accession"]
+    except KeyError:
+        return beam.pvalue.TaggedOutput("Errors", sample)
     try:
         checklist = sample["characteristics"]["ENA-CHECKLIST"][0]["text"]
         if checklist in SPECIMENS_SYMBIONTS_CHECKLISTS:
@@ -237,6 +240,9 @@ def process_samples_for_dwh(sample, sample_type):
             return beam.pvalue.TaggedOutput("Errors", error_sample)
         host_sample = requests.get(
             f"https://www.ebi.ac.uk/biosamples/samples/{host_biosample_id}.json").json()
+        if "characteristics" not in host_sample:
+            error_sample["error_message"] = "Host sample doesn't exist"
+            return beam.pvalue.TaggedOutput("Errors", error_sample)
         while host_sample["characteristics"]["ENA-CHECKLIST"][0][
             "text"] != "ERC000053":
             try:

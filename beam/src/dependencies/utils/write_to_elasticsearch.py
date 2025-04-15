@@ -92,18 +92,11 @@ class WriteToElasticsearchDoFn(beam.DoFn):
                 record_id = element["tax_id"]
             else:
                 record_id = element['organism']
-        action = {
-            "_op_type": "index",
-            "_index": self.index,
-            "_id": record_id,
-            "_source": record
-        }
-        self.actions.append(action)
+        self.actions.append({"index": {"_index": self.index, "_id": record_id}})
+        self.actions.append(record)
 
     def finish_bundle(self):
         if self.actions:
-            try:
-                helpers.bulk(self.es, self.actions)
-            except BulkIndexError as e:
-                pass
+            for i in range(0, len(self.actions), 1000):
+                _ = self.es.bulk(body=self.actions[i:i+1000], request_timeout=60)
             self.actions = []
