@@ -1,6 +1,7 @@
 import json
 from collections import defaultdict
 from typing import Any
+from time import sleep
 
 import requests
 
@@ -40,22 +41,28 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
     raw_data = requests.get(
         f"{ena_root_url}?accession={study_id}&result=read_run"
         f"&fields={','.join(experiment_fields)}&format=json&limit=0",
-        timeout=60,
+        timeout=3600,
     ).json()
+
+    sleep(0.1)
 
     # Collect all assemblies
     assemblies = requests.get(
         f"{ena_root_url}?accession={study_id}&result=assembly"
         f"&fields={','.join(assemblies_fields)}&format=json&limit=0",
-        timeout=60,
+        timeout=3600,
     ).json()
+
+    sleep(0.1)
 
     # Collect all analyses
     analyses = requests.get(
         f"{ena_root_url}?accession={study_id}&result=analysis"
         f"&fields={','.join(analysis_fields)}&format=json&limit=0",
-        timeout=60,
+        timeout=3600,
     ).json()
+
+    sleep(0.1)
 
     # aggregate experiments, assemblies and analyses in the
     # dict(key: biosample_id, value: data record)
@@ -72,19 +79,22 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
             f"{biosamples_root_url}?size=200&filter="
             f"attr%3Aproject%20name%3A{project_tag}"
         )
-        samples_response = requests.get(first_url, timeout=60).json()
+        samples_response = requests.get(first_url, timeout=3600).json()
+        sleep(0.1)
         while "_embedded" in samples_response:
             for sample in samples_response["_embedded"]["samples"]:
                 sample["project_name"] = project_tag
                 samples[sample["accession"]] = sample
             if "next" in samples_response["_links"]:
                 samples_response = requests.get(
-                    samples_response["_links"]["next"]["href"], timeout=60
+                    samples_response["_links"]["next"]["href"], timeout=3600
                 ).json()
+                sleep(0.1)
             else:
                 samples_response = requests.get(
-                    samples_response["_links"]["last"]["href"], timeout=60
+                    samples_response["_links"]["last"]["href"], timeout=3600
                 ).json()
+                sleep(0.1)
 
     # join metadata and data records
     for record_type, agg_name in {
@@ -100,30 +110,30 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
     additional_samples = dict()
     for sample_id, record in samples.items():
         if "sample derived from" in record["characteristics"]:
-            host_sample_id = \
-            record["characteristics"]["sample derived from"][0]["text"]
+            host_sample_id = record["characteristics"]["sample derived from"][0]["text"]
             if (
-                    host_sample_id not in samples
-                    and host_sample_id not in additional_samples
+                host_sample_id not in samples
+                and host_sample_id not in additional_samples
             ):
                 try:
                     additional_samples[host_sample_id] = requests.get(
-                        f"{biosamples_root_url}/{host_sample_id}", timeout=60
+                        f"{biosamples_root_url}/{host_sample_id}", timeout=3600
                     ).json()
+                    sleep(0.1)
                 except json.decoder.JSONDecodeError:
                     print(f"json decode error for {host_sample_id}")
                     continue
         elif "sample symbiont of" in record["characteristics"]:
-            host_sample_id = record["characteristics"]["sample symbiont of"][0][
-                "text"]
+            host_sample_id = record["characteristics"]["sample symbiont of"][0]["text"]
             if (
-                    host_sample_id not in samples
-                    and host_sample_id not in additional_samples
+                host_sample_id not in samples
+                and host_sample_id not in additional_samples
             ):
                 try:
                     additional_samples[host_sample_id] = requests.get(
-                        f"{biosamples_root_url}/{host_sample_id}", timeout=60
+                        f"{biosamples_root_url}/{host_sample_id}", timeout=3600
                     ).json()
+                    sleep(0.1)
                 except json.decoder.JSONDecodeError:
                     print(f"json decode error for {host_sample_id}")
                     continue
@@ -134,8 +144,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
     return samples
 
 
-def parse_data_records(aggr_var: defaultdict[Any, list],
-                       records_data: dict) -> None:
+def parse_data_records(aggr_var: defaultdict[Any, list], records_data: dict) -> None:
     """
     Parse data records from ENA into python dict(key: biosample_id, \
         value: data_record)
@@ -148,11 +157,11 @@ def parse_data_records(aggr_var: defaultdict[Any, list],
 
 
 def join_metadata_and_data(
-        records_type: str,
-        records_data: dict,
-        project_name: str,
-        samples: dict[str, dict],
-        biosamples_root_url: str,
+    records_type: str,
+    records_data: dict,
+    project_name: str,
+    samples: dict[str, dict],
+    biosamples_root_url: str,
 ) -> None:
     """
     Join records from BioSamples and ENA into python dict(key: biosample_id, \
@@ -174,8 +183,9 @@ def join_metadata_and_data(
             if sample_id not in samples:
                 try:
                     response = requests.get(
-                        f"{biosamples_root_url}/{sample_id}", timeout=60
+                        f"{biosamples_root_url}/{sample_id}", timeout=3600
                     ).json()
+                    sleep(0.1)
                     if response["status"] == 403:
                         continue
                     samples[sample_id] = response
