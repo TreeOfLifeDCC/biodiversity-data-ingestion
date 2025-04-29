@@ -1,5 +1,6 @@
 import pendulum
 import json
+import asyncio
 
 from datetime import datetime, timedelta
 
@@ -35,6 +36,7 @@ def additional_task(host: str, password: str, project_name: str, **kwargs):
         update_articles_index.update_articles_index(host=host, password=password)
     elif project_name == "asg":
         import_mgnify_data.main(host=host, password=password)
+        update_articles_index.update_articles_index(host=host, password=password)
 
 
 @task
@@ -57,10 +59,33 @@ def get_metadata(study_id: str, project_name: str, bucket_name: str, **kwargs) -
             file.write(f"{json.dumps(record)}\n")
 
 
+@task
+def get_genome_notes(**kwargs) -> None:
+    from dependencies import import_genome_notes
+
+    genome_notes = asyncio.run(import_genome_notes.main())
+
+    base = ObjectStoragePath(
+        f"gcs://prj-ext-prod-biodiv-data-in-genome_notes",
+        conn_id="google_cloud_default",
+    )
+    base.mkdir(exist_ok=True)
+    path = base / "genome_notes.jsonl"
+    with path.open("w") as file:
+        for tax_id, genome_note in genome_notes.items():
+            body = dict()
+            if tax_id == "1594315":
+                body["articles"] = [genome_note[0]]
+            else:
+                body["articles"] = genome_note
+            body["tax_id"] = tax_id
+            file.write(f"{json.dumps(body)}\n")
+
+
 @dag(
-    schedule="0 7 * * *",
-    #schedule_interval=None,
-    start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
+    # schedule="0 7 * * *",
+    schedule_interval=None,
+    start_date=pendulum.datetime(2025, 4, 1, tz="Europe/London"),
     catchup=False,
     tags=["biodiversity_metadata_ingestion"],
 )
@@ -193,6 +218,7 @@ def biodiversity_metadata_ingestion():
         metadata_import_tasks >> start_ingestion_job
         import_tol_qc_data_task >> start_ingestion_job
         import_images_task >> start_ingestion_job
+        get_genome_notes() >> start_ingestion_job
 
         if project_name == "dtol":
             data_portal_alias_name = "data_portal"

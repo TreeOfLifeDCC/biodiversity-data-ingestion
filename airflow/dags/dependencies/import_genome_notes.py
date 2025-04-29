@@ -1,0 +1,301 @@
+import os
+
+from typing import List, Dict, Optional, Any
+import asyncio
+import json
+
+import aiohttp
+from collections import defaultdict
+
+from bs4 import BeautifulSoup
+from xml.etree import ElementTree as ET
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+
+TOKEN_URL = "https://wellcomeopenresearch.org/api/token"
+GATEWAY_URL = "https://gateway.f1000.com/gateway/231"
+EBI_API_BASE = "https://www.ebi.ac.uk/ena/browser/api/xml/"
+MAX_CONCURRENT_REQUESTS = 10
+REQUEST_TIMEOUT = 30.0
+
+
+def clean_study_id(study_id: str) -> str:
+    if "?" in study_id:
+        return study_id.split("?")[0]
+    if "&" in study_id:
+        return study_id.split("&")[0]
+    return study_id
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+async def fetch(
+    session: aiohttp.ClientSession, url: str, headers: Optional[Dict[str, str]] = None
+) -> Any:
+    try:
+        async with session.get(url, headers=headers) as response:
+            response.raise_for_status()
+            return (
+                await response.json()
+                if response.content_type == "application/json"
+                else await response.text()
+            )
+    except Exception as e:
+        raise
+
+
+async def get_auth_token(session: aiohttp.ClientSession) -> str:
+
+    try:
+        response = await fetch(
+            session, TOKEN_URL, headers={"content-type": "application/json"}
+        )
+        return response["token"]
+    except Exception as e:
+        raise
+
+
+async def extract_article_versions(
+    session: aiohttp.ClientSession, article_ids: List[str], headers: Dict[str, str]
+) -> List[str]:
+
+    tasks = [
+        fetch(
+            session,
+            f"https://article.f1000.com/articles?id={article_id}&publishedOnly=true",
+            headers,
+        )
+        for article_id in article_ids
+    ]
+    responses = await asyncio.gather(*tasks)
+    return [resp[0]["versionIds"][0] for resp in responses]
+
+
+async def get_articles_bulk(
+    session: aiohttp.ClientSession,
+    article_ids: List[str],
+    headers: Dict[str, str],
+    batch_size=20,
+) -> tuple:
+    all_responses = []
+    failed_ids = []
+
+    # Process article IDs in batches
+    for i in range(0, len(article_ids), batch_size):
+        batch_ids = article_ids[i : i + batch_size]
+
+        # Build URL with multiple id parameters
+        # Example: ?id=123&id=456&id=789&publishedOnly=true
+        id_params = "&".join([f"id={article_id}" for article_id in batch_ids])
+        url = f"https://article.f1000.com/versions?{id_params}&publishedOnly=true"
+
+        try:
+            response = await fetch(session, url, headers)
+            # Check if the response is valid
+            if response is not None:
+                all_responses.extend(response)
+            else:
+                print(f"Received None response for batch {i // batch_size + 1}")
+                failed_ids.extend(batch_ids)
+        except Exception as e:
+            print(f"Failed to fetch batch {i // batch_size + 1}: {e}")
+            failed_ids.extend(batch_ids)
+
+    return all_responses, failed_ids
+
+
+async def fetch_study_data_bulk(
+    session: aiohttp.ClientSession, study_ids: List[str]
+) -> Dict[str, Optional[str]]:
+
+    results = {}
+    for i in range(0, len(study_ids), 20):
+        batch = ",".join(study_ids[i : i + 20])
+        url = f"{EBI_API_BASE}{batch}"
+        try:
+            async with session.get(url) as response:
+                xml_data = await response.text()
+                results.update(parse_study_xml(xml_data, batch))
+        except Exception as e:
+            print(f"Failed to fetch study data for batch {batch}: {e}")
+    return results
+
+
+def parse_study_xml(xml_data: str, study_ids: str) -> Dict[str, str]:
+    tax_id_map = {}
+    study_ids_list = study_ids.split(",") if isinstance(study_ids, str) else study_ids
+    try:
+        root = ET.fromstring(xml_data)
+        for project, study_id in zip(root.findall("PROJECT"), study_ids_list):
+            tax_id = None
+            try:
+                tax_id = (
+                    project.find("UMBRELLA_PROJECT")
+                    .find("ORGANISM")
+                    .find("TAXON_ID")
+                    .text
+                )
+            except AttributeError:
+                try:
+                    tax_id = (
+                        project.find("SUBMISSION_PROJECT")
+                        .find("ORGANISM")
+                        .find("TAXON_ID")
+                        .text
+                    )
+                except AttributeError:
+                    print(f"Tax ID not found for {study_id}")
+            # print(study_id)
+            if tax_id:
+                tax_id_map[study_id] = tax_id
+    except ET.ParseError as e:
+        print(f"XML Parsing error: {e}")
+
+    return tax_id_map
+
+
+async def fetch_html(session: aiohttp.ClientSession, url: str) -> Optional[str]:
+
+    try:
+        async with session.get(url) as response:
+            return await response.text()
+    except Exception as e:
+        print(f"Failed to fetch {url}: {e}")
+        return None
+
+
+async def parse_genome_notes(
+    session: aiohttp.ClientSession, articles: List[Any]
+) -> Dict[str, List[Dict[str, Any]]]:
+    genome_notes = defaultdict(list)
+    visited_studies = set()
+
+    # Fetch all HTML pages in parallel
+    print(f"Fetching HTML for {len(articles)} articles...")
+    tasks = [fetch_html(session, article["htmlUrl"]) for article in articles]
+    html_texts = await asyncio.gather(*tasks)
+
+    # Map of article URL to its index for faster lookups
+    article_index_map = {article["htmlUrl"]: i for i, article in enumerate(articles)}
+
+    # Collect study IDs across all articles
+    study_id_map = {}
+    for index, (article, html_text) in enumerate(zip(articles, html_texts)):
+        print(
+            f"Collecting study IDs from article {index + 1}/{len(articles)}",
+            end="\r",
+            flush=True,
+        )
+        if not html_text:
+            continue
+
+        soup = BeautifulSoup(html_text, "html.parser")
+        article_study_ids = []
+
+        for link in soup.find_all("a", href=True):
+            href = link["href"]
+
+            # Try all possible formats for extracting study ID
+            study_id_1 = clean_study_id(href.split(":")[-1]) if ":" in href else ""
+            study_id_2 = clean_study_id(href.split("/")[-1]) if "/" in href else ""
+            study_id_3 = clean_study_id(href.split("%3D")[-1]) if "%3D" in href else ""
+            study_id_4 = (
+                clean_study_id(href.split("/")[-2])
+                if "/" in href and len(href.split("/")) > 2
+                else ""
+            )
+
+            chosen_study_id = None
+            if study_id_1.startswith("PRJ"):
+                chosen_study_id = study_id_1
+            elif study_id_2.startswith("PRJ"):
+                chosen_study_id = study_id_2
+            elif study_id_3.startswith("PRJ"):
+                chosen_study_id = study_id_3
+            elif study_id_4.startswith("PRJ"):
+                chosen_study_id = study_id_4
+
+            if chosen_study_id and chosen_study_id not in visited_studies:
+                visited_studies.add(chosen_study_id)
+                article_study_ids.append(chosen_study_id)
+
+        if article_study_ids:
+            study_id_map[article["htmlUrl"]] = {
+                "study_ids": article_study_ids,
+                "article_data": article,
+                "html_text": html_text,  # Store HTML text to avoid lookup later
+            }
+
+    # Fetch all study data in bulk
+    print(f"Fetching data for {len(visited_studies)} unique study IDs...")
+    study_data = await fetch_study_data_bulk(session, list(visited_studies))
+
+    # Process genome notes
+    processed_count = 0
+    for html_url, study_info in study_id_map.items():
+        html_text = study_info["html_text"]
+        soup = BeautifulSoup(html_text, "html.parser")
+        article_data = study_info["article_data"]
+
+        for study_id in study_info["study_ids"]:
+            tax_id = study_data.get(study_id)
+
+            if tax_id:
+                # Find the figure URI
+                figure_uri = "#"
+                for img in soup.find_all("img"):
+                    src = img.get("src", "")
+                    if src and "figure1.gif" in src:
+                        figure_uri = src
+                        break
+
+                # Find the caption
+                caption = None
+                for cap in soup.find_all("div", {"class": "caption"}):
+                    if cap.h3 and "Figure 1" in cap.h3.text:
+                        caption = cap.h3.text
+                        break
+
+                genome_note = {
+                    "tax_id": tax_id,
+                    "study_id": study_id,
+                    "url": article_data["pdfUrl"].split("/pdf")[0],
+                    "citeURL": f"https://doi.org/{article_data['doi']}",
+                    "title": article_data["title"],
+                    "abstract": article_data["abstractText"],
+                    "figureURI": figure_uri,
+                    "caption": caption,
+                }
+
+                processed_count += 1
+                print(f"Processed {processed_count} genome notes", end="\r", flush=True)
+                genome_notes[tax_id].append(genome_note)
+
+    print(
+        f"\nCompleted processing {processed_count} genome notes across {len(genome_notes)} taxa"
+    )
+    return genome_notes
+
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        try:
+            headers = {
+                "f1000-authbearer": await get_auth_token(session),
+                "content-type": "application/json",
+            }
+
+            # Fetch article IDs
+            article_ids = (await fetch(session, GATEWAY_URL, headers))["members"][0][
+                "ids"
+            ]
+            article_version_ids = await extract_article_versions(
+                session, article_ids, headers
+            )
+            print(len(article_version_ids))
+            articles, problems = await get_articles_bulk(
+                session, article_version_ids, headers
+            )
+            genome_notes = await parse_genome_notes(session, articles)
+            return genome_notes
+        except Exception as e:
+            print(f"An error occurred during processing: {e}")
