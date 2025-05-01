@@ -292,7 +292,7 @@ def process_samples_for_dwh(sample, sample_type):
         return host_sample["taxId"], dwh_record
 
 
-def build_data_portal_record(element, bq_dataset_name, genome_notes):
+def build_data_portal_record(element, bq_dataset_name, genome_notes, annotations):
     # TODO: split this function
     phylogenetic_ranks = (
         "kingdom",
@@ -469,28 +469,16 @@ def build_data_portal_record(element, bq_dataset_name, genome_notes):
     )
 
     # request annotations
-    if bq_dataset_name == "asg":
-        annotation_response = requests.get(
-            f"https://portal.aquaticsymbiosisgenomics.org/api/annotation/{sample['tax_id']}"
-        ).json()
-    elif bq_dataset_name == "gbdp":
-        annotation_response = requests.get(
-            f"https://portal.erga-biodiversity.eu/api/gbdp_annotation/{sample['tax_id']}"
-        ).json()
-    else:
-        if sample["tax_id"] == "876063_3126489":
-            annotation_response = requests.get(
-                "https://portal.erga-biodiversity.eu/api/annotation/3126489"
-            ).json()
-        else:
-            annotation_response = requests.get(
-                f"https://portal.erga-biodiversity.eu/api/annotation/{sample['tax_id']}"
-            ).json()
-    if len(annotation_response["results"]) > 0:
+    annotations_dict = {
+        str(annotation["tax_id"]): annotation["annotations"]
+        for annotation in annotations
+    }
+    if sample["tax_id"] == "876063_3126489":
         sample["currentStatus"] = "Annotation Complete"
-        sample["annotation"] = annotation_response["results"][0]["_source"][
-            "annotations"
-        ]
+        sample["annotation"] = annotations_dict["3126489"]
+    elif str(sample["tax_id"]) in annotations_dict:
+        sample["currentStatus"] = "Annotation Complete"
+        sample["annotation"] = annotations_dict[str(sample["tax_id"])]
 
     sample["biosamples"] = "Done"
     sample["annotation_status"] = "Waiting"
@@ -675,7 +663,7 @@ def build_data_portal_record(element, bq_dataset_name, genome_notes):
     return beam.pvalue.TaggedOutput("normal", sample)
 
 
-def build_dwh_record(element, bq_dataset_name):
+def build_dwh_record(element, bq_dataset_name, annotations):
     phylogenetic_ranks = (
         "kingdom",
         "phylum",
@@ -823,24 +811,14 @@ def build_dwh_record(element, bq_dataset_name):
         else sample["current_status"]
     )
 
-    if bq_dataset_name == "asg":
-        annotation_response = requests.get(
-            f"https://portal.aquaticsymbiosisgenomics.org/api/annotation/{sample['tax_id']}"
-        ).json()
-    elif bq_dataset_name == "gbdp":
-        annotation_response = requests.get(
-            f"https://portal.erga-biodiversity.eu/api/gbdp_annotation/{sample['tax_id']}"
-        ).json()
-    else:
-        if sample["tax_id"] == "876063_3126489":
-            annotation_response = requests.get(
-                "https://portal.erga-biodiversity.eu/api/annotation/3126489"
-            ).json()
-        else:
-            annotation_response = requests.get(
-                f"https://portal.erga-biodiversity.eu/api/annotation/{sample['tax_id']}"
-            ).json()
-    if len(annotation_response["results"]) > 0:
+    annotations_dict = {
+        str(annotation["tax_id"]): annotation["annotations"]
+        for annotation in annotations
+    }
+    if (
+        sample["tax_id"] == "876063_3126489"
+        or str(sample["tax_id"]) in annotations_dict
+    ):
         sample["current_status"] = "Annotation Complete"
 
     if sample["tax_id"] == "876063_3126489":

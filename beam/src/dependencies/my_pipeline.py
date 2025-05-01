@@ -41,6 +41,14 @@ def biodiversity_etl(
         )
         | "Parse genome_notes JSON" >> beam.Map(lambda sample: json.loads(sample))
     )
+    annotations = (
+        pipeline
+        | "Read annotations from JSON file"
+        >> beam.io.ReadFromText(
+            f"gs://prj-ext-prod-biodiv-data-in-annotations/{bq_dataset_name}.jsonl"
+        )
+        | "Parse annotations JSON" >> beam.Map(lambda sample: json.loads(sample))
+    )
     classified_samples = (
         pipeline
         | "Read data from JSON file" >> beam.io.ReadFromText(input_path)
@@ -95,7 +103,10 @@ def biodiversity_etl(
         merged_collection
         | "Build data portal dump"
         >> beam.Map(
-            build_data_portal_record, bq_dataset_name, beam.pvalue.AsList(genome_notes)
+            build_data_portal_record,
+            bq_dataset_name,
+            beam.pvalue.AsList(genome_notes),
+            beam.pvalue.AsList(annotations),
         ).with_outputs()
     )
 
@@ -110,7 +121,9 @@ def biodiversity_etl(
     dwh_collection = (
         merged_collection
         | "Build data portal dump for dwh"
-        >> beam.Map(build_dwh_record, bq_dataset_name).with_outputs()
+        >> beam.Map(
+            build_dwh_record, bq_dataset_name, beam.pvalue.AsList(annotations)
+        ).with_outputs()
     )
 
     dwh_collection.normal | "Write dwh dump to BigQuery" >> beam.io.WriteToBigQuery(
