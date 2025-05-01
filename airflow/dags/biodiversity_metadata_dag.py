@@ -18,7 +18,7 @@ from dependencies.biodiversity_projects import (
 )
 
 from dependencies.common_functions import start_apache_beam
-from dependencies import import_tol_qc, import_images
+from dependencies import import_tol_qc, import_images, import_annotations
 
 
 @task
@@ -83,8 +83,8 @@ def get_genome_notes(**kwargs) -> None:
 
 
 @dag(
-    # schedule="0 7 * * *",
-    schedule_interval=None,
+    schedule="0 7 * * *",
+    # schedule_interval=None,
     start_date=pendulum.datetime(2025, 4, 1, tz="Europe/London"),
     catchup=False,
     tags=["biodiversity_metadata_ingestion"],
@@ -96,6 +96,7 @@ def biodiversity_metadata_ingestion():
     """
     erga_host = Variable.get("erga_elasticsearch_host")
     erga_password = Variable.get("erga_elasticsearch_password")
+    github_token = Variable.get("github_token")
     import_tol_qc_data_task = PythonOperator(
         task_id="import_tol_qc_data_task",
         python_callable=import_tol_qc.main,
@@ -105,6 +106,14 @@ def biodiversity_metadata_ingestion():
         task_id="import_images_task",
         python_callable=import_images.main,
         op_kwargs={"es_host": erga_host, "es_password": erga_password},
+    )
+    import_genome_notes_task = get_genome_notes.override(
+        task_id="import_genome_notes_task"
+    )()
+    import_annotations_task = PythonOperator(
+        task_id="import_annotations_task",
+        python_callable=import_annotations.main,
+        op_kwargs={"github_token": github_token},
     )
     date_prefix = datetime.today().strftime("%Y-%m-%d")
     yesterday_day_prefix = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -218,7 +227,8 @@ def biodiversity_metadata_ingestion():
         metadata_import_tasks >> start_ingestion_job
         import_tol_qc_data_task >> start_ingestion_job
         import_images_task >> start_ingestion_job
-        get_genome_notes() >> start_ingestion_job
+        import_genome_notes_task >> start_ingestion_job
+        import_annotations_task >> start_ingestion_job
 
         if project_name == "dtol":
             data_portal_alias_name = "data_portal"
