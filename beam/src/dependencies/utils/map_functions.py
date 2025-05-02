@@ -541,55 +541,60 @@ def build_data_portal_record(element, bq_dataset_name, genome_notes, annotations
 
     # Collecting goat_info
     sample["goat_info"] = None
-    if sample["tax_id"] == "876063_3126489":
-        goat_response = requests.get(
-            "https://goat.genomehubs.org/api/v0.0.1/record?recordId=3126489&result=taxon&taxonomy=ncbi"
-        ).json()
-    else:
-        goat_response = requests.get(
-            f"https://goat.genomehubs.org/api/v0.0.1/record?recordId={sample['tax_id']}&result=taxon&taxonomy=ncbi"
-        ).json()
-    if goat_response["records"]:
-        goat_data = []
-        goat_response = goat_response["records"][0]["record"]["attributes"]
-        if "genome_size" in goat_response:
-            goat_data.append(
-                {
-                    "name": "genome_size",
-                    "value": goat_response["genome_size"]["value"],
-                    "count": goat_response["genome_size"]["count"],
-                    "aggregation_method": goat_response["genome_size"][
-                        "aggregation_method"
-                    ],
-                    "aggregation_source": goat_response["genome_size"][
-                        "aggregation_source"
-                    ],
-                }
-            )
-        if "busco_completeness" in goat_response:
-            goat_data.append(
-                {
-                    "name": "busco_completeness",
-                    "value": goat_response["busco_completeness"]["value"],
-                    "count": goat_response["busco_completeness"]["count"],
-                    "aggregation_method": goat_response["busco_completeness"][
-                        "aggregation_method"
-                    ],
-                    "aggregation_source": goat_response["busco_completeness"][
-                        "aggregation_source"
-                    ],
-                }
-            )
+    try:
         if sample["tax_id"] == "876063_3126489":
-            sample["goat_info"] = {
-                "url": f"https://goat.genomehubs.org/records?record_id=3126489&result=taxon&taxonomy=ncbi#{sample['organism']}",
-                "attributes": goat_data,
-            }
+            goat_response = requests.get(
+                "https://goat.genomehubs.org/api/v0.0.1/record?recordId=3126489&result=taxon&taxonomy=ncbi",
+                timeout=3600,
+            ).json()
         else:
-            sample["goat_info"] = {
-                "url": f"https://goat.genomehubs.org/records?record_id={sample['tax_id']}&result=taxon&taxonomy=ncbi#{sample['organism']}",
-                "attributes": goat_data,
-            }
+            goat_response = requests.get(
+                f"https://goat.genomehubs.org/api/v0.0.1/record?recordId={sample['tax_id']}&result=taxon&taxonomy=ncbi",
+                timeout=3600,
+            ).json()
+        if goat_response["records"]:
+            goat_data = []
+            goat_response = goat_response["records"][0]["record"]["attributes"]
+            if "genome_size" in goat_response:
+                goat_data.append(
+                    {
+                        "name": "genome_size",
+                        "value": goat_response["genome_size"]["value"],
+                        "count": goat_response["genome_size"]["count"],
+                        "aggregation_method": goat_response["genome_size"][
+                            "aggregation_method"
+                        ],
+                        "aggregation_source": goat_response["genome_size"][
+                            "aggregation_source"
+                        ],
+                    }
+                )
+            if "busco_completeness" in goat_response:
+                goat_data.append(
+                    {
+                        "name": "busco_completeness",
+                        "value": goat_response["busco_completeness"]["value"],
+                        "count": goat_response["busco_completeness"]["count"],
+                        "aggregation_method": goat_response["busco_completeness"][
+                            "aggregation_method"
+                        ],
+                        "aggregation_source": goat_response["busco_completeness"][
+                            "aggregation_source"
+                        ],
+                    }
+                )
+            if sample["tax_id"] == "876063_3126489":
+                sample["goat_info"] = {
+                    "url": f"https://goat.genomehubs.org/records?record_id=3126489&result=taxon&taxonomy=ncbi#{sample['organism']}",
+                    "attributes": goat_data,
+                }
+            else:
+                sample["goat_info"] = {
+                    "url": f"https://goat.genomehubs.org/records?record_id={sample['tax_id']}&result=taxon&taxonomy=ncbi#{sample['organism']}",
+                    "attributes": goat_data,
+                }
+    except Exception as e:
+        pass
 
     # collect other common names and nbnatlas links
     if sample["tax_id"] == "876063_3126489":
