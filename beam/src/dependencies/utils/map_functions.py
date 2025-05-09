@@ -534,7 +534,7 @@ def build_data_portal_record(element, bq_dataset_name, genome_notes, annotations
         str(genome_note["tax_id"]): genome_note["articles"]
         for genome_note in genome_notes
     }
-    if sample["tax_id"] == "876063_3126489":
+    if sample["tax_id"] == "876063_3126489" and "876063" in genome_notes_dict:
         sample["genome_notes"] = genome_notes_dict["876063"]
     elif str(sample["tax_id"]) in genome_notes_dict:
         sample["genome_notes"] = genome_notes_dict[str(sample["tax_id"])]

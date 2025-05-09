@@ -85,7 +85,7 @@ def get_genome_notes(**kwargs) -> None:
 @dag(
     schedule="0 7 * * *",
     # schedule_interval=None,
-    start_date=pendulum.datetime(2025, 4, 1, tz="Europe/London"),
+    start_date=pendulum.datetime(2025, 5, 1, tz="Europe/London"),
     catchup=False,
     tags=["biodiversity_metadata_ingestion"],
 )

@@ -1,8 +1,5 @@
-import os
-
 from typing import List, Dict, Optional, Any
 import asyncio
-import json
 
 import aiohttp
 from collections import defaultdict
@@ -70,6 +67,7 @@ async def extract_article_versions(
     return [resp[0]["versionIds"][0] for resp in responses]
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def get_articles_bulk(
     session: aiohttp.ClientSession,
     article_ids: List[str],
@@ -82,9 +80,6 @@ async def get_articles_bulk(
     # Process article IDs in batches
     for i in range(0, len(article_ids), batch_size):
         batch_ids = article_ids[i : i + batch_size]
-
-        # Build URL with multiple id parameters
-        # Example: ?id=123&id=456&id=789&publishedOnly=true
         id_params = "&".join([f"id={article_id}" for article_id in batch_ids])
         url = f"https://article.f1000.com/versions?{id_params}&publishedOnly=true"
 
@@ -98,11 +93,41 @@ async def get_articles_bulk(
                 failed_ids.extend(batch_ids)
         except Exception as e:
             print(f"Failed to fetch batch {i // batch_size + 1}: {e}")
+            print(len(batch_ids))
             failed_ids.extend(batch_ids)
+            raise  # Re-raise the exception to trigger retry
 
     return all_responses, failed_ids
 
 
+async def get_articles_sequential(
+    session: aiohttp.ClientSession, article_ids: List[str], headers: Dict[str, str]
+) -> List[Any]:
+    """
+    Fetch articles sequentially one by one for IDs that failed in batch processing.
+    """
+    successful_responses = []
+
+    for article_id in article_ids:
+        print(f"Attempting sequential fetch for article ID: {article_id}")
+        url = f"https://article.f1000.com/versions?id={article_id}&publishedOnly=true"
+
+        try:
+            response = await fetch(session, url, headers)
+            if response is not None:
+                successful_responses.extend(response)
+                print(f"Successfully fetched article ID: {article_id}")
+            else:
+                print(
+                    f"Failed to fetch article ID: {article_id} (received None response)"
+                )
+        except Exception as e:
+            print(f"Failed to fetch article ID: {article_id}: {e}")
+
+    return successful_responses
+
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def fetch_study_data_bulk(
     session: aiohttp.ClientSession, study_ids: List[str]
 ) -> Dict[str, Optional[str]]:
@@ -144,7 +169,6 @@ def parse_study_xml(xml_data: str, study_ids: str) -> Dict[str, str]:
                     )
                 except AttributeError:
                     print(f"Tax ID not found for {study_id}")
-            # print(study_id)
             if tax_id:
                 tax_id_map[study_id] = tax_id
     except ET.ParseError as e:
@@ -153,14 +177,14 @@ def parse_study_xml(xml_data: str, study_ids: str) -> Dict[str, str]:
     return tax_id_map
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def fetch_html(session: aiohttp.ClientSession, url: str) -> Optional[str]:
-
     try:
         async with session.get(url) as response:
             return await response.text()
     except Exception as e:
         print(f"Failed to fetch {url}: {e}")
-        return None
+        raise  # Re-raise the exception to trigger retry
 
 
 async def parse_genome_notes(
@@ -174,10 +198,6 @@ async def parse_genome_notes(
     tasks = [fetch_html(session, article["htmlUrl"]) for article in articles]
     html_texts = await asyncio.gather(*tasks)
 
-    # Map of article URL to its index for faster lookups
-    article_index_map = {article["htmlUrl"]: i for i, article in enumerate(articles)}
-
-    # Collect study IDs across all articles
     study_id_map = {}
     for index, (article, html_text) in enumerate(zip(articles, html_texts)):
         print(
@@ -291,10 +311,30 @@ async def main():
             article_version_ids = await extract_article_versions(
                 session, article_ids, headers
             )
-            print(len(article_version_ids))
-            articles, problems = await get_articles_bulk(
+            print(f"Total article version IDs: {len(article_version_ids)}")
+
+            # Fetch articles in bulk
+            articles, failed_ids = await get_articles_bulk(
                 session, article_version_ids, headers
             )
+            print(f"Successfully fetched {len(articles)} articles in bulk")
+            # If there are any failed IDs, try to fetch them sequentially
+            if failed_ids:
+                print(
+                    f"Attempting to fetch {len(failed_ids)} failed articles sequentially..."
+                )
+                sequential_articles = await get_articles_sequential(
+                    session, failed_ids, headers
+                )
+                if sequential_articles:
+                    print(
+                        f"Successfully fetched {len(sequential_articles)} articles sequentially"
+                    )
+                    articles.extend(sequential_articles)
+                else:
+                    print("No articles were fetched sequentially")
+
+            # Process the combined articles
             genome_notes = await parse_genome_notes(session, articles)
             return genome_notes
         except Exception as e:
