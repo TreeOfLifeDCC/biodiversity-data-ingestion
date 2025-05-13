@@ -67,7 +67,6 @@ async def extract_article_versions(
     return [resp[0]["versionIds"][0] for resp in responses]
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def get_articles_bulk(
     session: aiohttp.ClientSession,
     article_ids: List[str],
@@ -77,7 +76,6 @@ async def get_articles_bulk(
     all_responses = []
     failed_ids = []
 
-    # Process article IDs in batches
     for i in range(0, len(article_ids), batch_size):
         batch_ids = article_ids[i : i + batch_size]
         id_params = "&".join([f"id={article_id}" for article_id in batch_ids])
@@ -95,7 +93,6 @@ async def get_articles_bulk(
             print(f"Failed to fetch batch {i // batch_size + 1}: {e}")
             print(len(batch_ids))
             failed_ids.extend(batch_ids)
-            raise  # Re-raise the exception to trigger retry
 
     return all_responses, failed_ids
 
@@ -336,6 +333,7 @@ async def main():
 
             # Process the combined articles
             genome_notes = await parse_genome_notes(session, articles)
+            print(f"Processing complete! Total entries: {len(genome_notes)}")
             return genome_notes
         except Exception as e:
             print(f"An error occurred during processing: {e}")
