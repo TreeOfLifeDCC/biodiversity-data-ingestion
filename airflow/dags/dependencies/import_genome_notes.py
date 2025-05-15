@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from bs4 import BeautifulSoup
 from xml.etree import ElementTree as ET
-from tenacity import retry, stop_after_attempt, wait_exponential
+import warnings
 
 
 TOKEN_URL = "https://wellcomeopenresearch.org/api/token"
@@ -24,7 +24,6 @@ def clean_study_id(study_id: str) -> str:
     return study_id
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def fetch(
     session: aiohttp.ClientSession, url: str, headers: Optional[Dict[str, str]] = None
 ) -> Any:
@@ -54,15 +53,18 @@ async def get_auth_token(session: aiohttp.ClientSession) -> str:
 async def extract_article_versions(
     session: aiohttp.ClientSession, article_ids: List[str], headers: Dict[str, str]
 ) -> List[str]:
+    # Create a semaphore to limit concurrent requests
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
-    tasks = [
-        fetch(
-            session,
-            f"https://article.f1000.com/articles?id={article_id}&publishedOnly=true",
-            headers,
-        )
-        for article_id in article_ids
-    ]
+    async def fetch_with_semaphore(article_id):
+        async with semaphore:
+            return await fetch(
+                session,
+                f"https://wellcomeopenresearch.org/api/articles?id={article_id}&publishedOnly=true",
+                headers,
+            )
+
+    tasks = [fetch_with_semaphore(article_id) for article_id in article_ids]
     responses = await asyncio.gather(*tasks)
     return [resp[0]["versionIds"][0] for resp in responses]
 
@@ -79,7 +81,7 @@ async def get_articles_bulk(
     for i in range(0, len(article_ids), batch_size):
         batch_ids = article_ids[i : i + batch_size]
         id_params = "&".join([f"id={article_id}" for article_id in batch_ids])
-        url = f"https://article.f1000.com/versions?{id_params}&publishedOnly=true"
+        url = f"https://wellcomeopenresearch.org/api/versions?{id_params}&publishedOnly=true"
 
         try:
             response = await fetch(session, url, headers)
@@ -107,7 +109,7 @@ async def get_articles_sequential(
 
     for article_id in article_ids:
         print(f"Attempting sequential fetch for article ID: {article_id}")
-        url = f"https://article.f1000.com/versions?id={article_id}&publishedOnly=true"
+        url = f"https://wellcomeopenresearch.org/api/versions?id={article_id}&publishedOnly=true"
 
         try:
             response = await fetch(session, url, headers)
@@ -124,21 +126,37 @@ async def get_articles_sequential(
     return successful_responses
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def fetch_study_data_bulk(
     session: aiohttp.ClientSession, study_ids: List[str]
 ) -> Dict[str, Optional[str]]:
-
+    # Create a semaphore to limit concurrent requests
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     results = {}
-    for i in range(0, len(study_ids), 20):
-        batch = ",".join(study_ids[i : i + 20])
+
+    async def fetch_batch_with_semaphore(batch_ids):
+        batch = ",".join(batch_ids)
         url = f"{EBI_API_BASE}{batch}"
-        try:
-            async with session.get(url) as response:
-                xml_data = await response.text()
-                results.update(parse_study_xml(xml_data, batch))
-        except Exception as e:
-            print(f"Failed to fetch study data for batch {batch}: {e}")
+        async with semaphore:
+            try:
+                async with session.get(url) as response:
+                    xml_data = await response.text()
+                    return parse_study_xml(xml_data, batch)
+            except Exception as e:
+                print(f"Failed to fetch study data for batch {batch}: {e}")
+                return {}
+
+    # Create batches of 20 study IDs
+    batches = [study_ids[i : i + 20] for i in range(0, len(study_ids), 20)]
+
+    # Fetch all batches concurrently with limited concurrency
+    batch_results = await asyncio.gather(
+        *[fetch_batch_with_semaphore(batch) for batch in batches]
+    )
+
+    # Combine all results
+    for batch_result in batch_results:
+        results.update(batch_result)
+
     return results
 
 
@@ -174,14 +192,13 @@ def parse_study_xml(xml_data: str, study_ids: str) -> Dict[str, str]:
     return tax_id_map
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 async def fetch_html(session: aiohttp.ClientSession, url: str) -> Optional[str]:
     try:
         async with session.get(url) as response:
             return await response.text()
     except Exception as e:
         print(f"Failed to fetch {url}: {e}")
-        raise  # Re-raise the exception to trigger retry
+        raise
 
 
 async def parse_genome_notes(
@@ -190,9 +207,16 @@ async def parse_genome_notes(
     genome_notes = defaultdict(list)
     visited_studies = set()
 
-    # Fetch all HTML pages in parallel
+    # Create a semaphore to limit concurrent requests
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+    async def fetch_html_with_semaphore(url):
+        async with semaphore:
+            return await fetch_html(session, url)
+
+    # Fetch all HTML pages in parallel with limited concurrency
     print(f"Fetching HTML for {len(articles)} articles...")
-    tasks = [fetch_html(session, article["htmlUrl"]) for article in articles]
+    tasks = [fetch_html_with_semaphore(article["htmlUrl"]) for article in articles]
     html_texts = await asyncio.gather(*tasks)
 
     study_id_map = {}
@@ -204,7 +228,6 @@ async def parse_genome_notes(
         )
         if not html_text:
             continue
-
         soup = BeautifulSoup(html_text, "html.parser")
         article_study_ids = []
 
