@@ -20,6 +20,7 @@ def start_apache_beam(biodiversity_project_name):
                 "tempLocation": "gs://dataflow-staging-europe-west2-"
                 "153439618737/tmp",
                 "machineType": "e2-medium",
+                "maxWorkers": 24,
                 "stagingLocation": "gs://dataflow-staging-europe-west2-"
                 "153439618737/staging",
                 "sdkContainerImage": f"{region}-docker.pkg.dev/"
