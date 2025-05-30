@@ -32,7 +32,10 @@ def additional_task(host: str, password: str, project_name: str, **kwargs):
     if project_name == "erga":
         update_summary_index.update_summary_index(host=host, password=password)
         update_articles_index.update_articles_index(host=host, password=password)
-    elif project_name in ["dtol", "gbdp"]:
+    elif project_name == "dtol":
+        update_summary_index.update_summary_index_dtol(host=host, password=password)
+        update_articles_index.update_articles_index(host=host, password=password)
+    elif project_name == "gbdp":
         update_articles_index.update_articles_index(host=host, password=password)
     elif project_name == "asg":
         import_mgnify_data.main(host=host, password=password)
