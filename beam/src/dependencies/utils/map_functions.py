@@ -146,6 +146,22 @@ def process_samples_for_dwh(sample, sample_type):
     except KeyError:
         dwh_record["organism"] = {"text": None, "ontologyTerm": None}
 
+    # checking for images
+    for record_name, record in sample["characteristics"].items():
+        if record_name != "organism":
+            values, units, ontology_terms = check_field_existence(record)
+            if "NHMUK" in values:
+                try:
+                    images_response = requests.get(
+                        f"https://portal.erga-biodiversity.eu/api/images/{values}"
+                    ).json()
+                    if len(images_response["results"]) > 0:
+                        dwh_record["images_available"] = True
+                except KeyError:
+                    dwh_record["images_available"] = False
+            else:
+                dwh_record["images_available"] = False
+
     if dwh_record["organism"]["text"]:
         dwh_record["commonName"] = get_common_name(dwh_record["organism"]["text"])
     else:
@@ -340,12 +356,20 @@ def build_data_portal_record(element, bq_dataset_name, genome_notes, annotations
         sample["assemblies"],
         sample["analyses"],
         sample["project_name"],
+        sample["images_available"],
     ) = parse_data_records(element[1]["specimens"])
     sample["records"] = [
         {
             k: v
             for k, v in specimens.items()
-            if k not in ["experiments", "assemblies", "analyses", "project_name"]
+            if k
+            not in [
+                "experiments",
+                "assemblies",
+                "analyses",
+                "project_name",
+                "images_available",
+            ]
         }
         for specimens in element[1]["specimens"]
     ]

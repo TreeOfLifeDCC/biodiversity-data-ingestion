@@ -1,6 +1,7 @@
 """
 Defines common functions to be used by map_functions
 """
+
 import requests
 
 
@@ -23,15 +24,15 @@ def check_field_existence(record):
 
 def get_common_name(latin_name):
     common_name_response = requests.get(
-        f"https://www.ebi.ac.uk/ena/taxonomy/rest/scientific-name/{latin_name}")
-    if common_name_response.content.decode('utf-8') == "No results.":
-        return 'Not specified'
+        f"https://www.ebi.ac.uk/ena/taxonomy/rest/scientific-name/{latin_name}"
+    )
+    if common_name_response.content.decode("utf-8") == "No results.":
+        return "Not specified"
     common_name_response = common_name_response.json()
-    if len(common_name_response) != 0 and 'commonName' in common_name_response[
-        0]:
-        return common_name_response[0]['commonName']
+    if len(common_name_response) != 0 and "commonName" in common_name_response[0]:
+        return common_name_response[0]["commonName"]
     else:
-        return 'Not specified'
+        return "Not specified"
 
 
 def parse_data_records(records):
@@ -39,15 +40,18 @@ def parse_data_records(records):
     assemblies = list()
     analyses = list()
     project_names = set()
+    images_available = False
     for record in records:
-        if 'experiments' in record:
-            experiments.extend(record['experiments'])
-        if 'assemblies' in record:
-            assemblies.extend(record['assemblies'])
-        if 'analyses' in record:
-            analyses.extend(record['analyses'])
+        if "experiments" in record:
+            experiments.extend(record["experiments"])
+        if "assemblies" in record:
+            assemblies.extend(record["assemblies"])
+        if "analyses" in record:
+            analyses.extend(record["analyses"])
+        if "images_available" in record:
+            images_available = record["images_available"]
         project_names.add(record["project_name"])
-    return experiments, assemblies, analyses, list(project_names)
+    return experiments, assemblies, analyses, list(project_names), images_available
 
 
 def parse_data_records_dwh(records):
@@ -55,18 +59,21 @@ def parse_data_records_dwh(records):
     assemblies = list()
     project_names = set()
     for record in records:
-        if 'experiments' in record:
-            experiments.extend(record['experiments'])
-        if 'assemblies' in record:
+        if "experiments" in record:
+            experiments.extend(record["experiments"])
+        if "assemblies" in record:
             assmbl_formatted = list()
-            for assmbl in record['assemblies']:
-                assmbl_formatted.append({
-                    'accession': assmbl['accession'],
-                    'description': assmbl['description']
-                })
+            for assmbl in record["assemblies"]:
+                assmbl_formatted.append(
+                    {
+                        "accession": assmbl["accession"],
+                        "description": assmbl["description"],
+                    }
+                )
             assemblies.extend(assmbl_formatted)
         project_names.add(record["project_name"])
     return experiments, assemblies, list(project_names)
+
 
 def remove_duplicated_metadata_records(metadata_records):
     visited_ids = {}
@@ -74,19 +81,18 @@ def remove_duplicated_metadata_records(metadata_records):
     ranks = {
         "Submitted to BioSamples": 1,
         "Raw Data - Submitted": 2,
-        "Assemblies - Submitted": 3
+        "Assemblies - Submitted": 3,
     }
     for sample in metadata_records:
         if sample["accession"] not in visited_ids:
             visited_ids[sample["accession"]] = ranks[sample["trackingSystem"]]
             new_records[sample["accession"]] = sample
         else:
-            if ranks[sample["trackingSystem"]] > visited_ids[
-                sample["accession"]]:
-                visited_ids[sample["accession"]] = ranks[
-                    sample["trackingSystem"]]
+            if ranks[sample["trackingSystem"]] > visited_ids[sample["accession"]]:
+                visited_ids[sample["accession"]] = ranks[sample["trackingSystem"]]
                 new_records[sample["accession"]] = sample
     return list(new_records.values())
+
 
 def remove_duplicated_data_records(data_records, accession_name):
     visited_ids = set()
@@ -95,4 +101,4 @@ def remove_duplicated_data_records(data_records, accession_name):
         if item[accession_name] not in visited_ids:
             visited_ids.add(item[accession_name])
             new_ids.append(item)
-    return  new_ids
+    return new_ids
