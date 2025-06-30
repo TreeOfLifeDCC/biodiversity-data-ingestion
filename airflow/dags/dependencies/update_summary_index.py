@@ -67,7 +67,7 @@ def update_summary_index_dtol(host: str, password: str):
     es = Elasticsearch([f"https://{host}"], http_auth=("elastic", password))
     body = dict()
     body["aggs"] = dict()
-    for aggregation_field in DATA_PORTAL_AGGREGATIONS:
+    for aggregation_field in DATA_PORTAL_AGGREGATIONS_DTOL:
         body["aggs"][aggregation_field] = {
             "terms": {"field": aggregation_field, "size": 20}
         }
