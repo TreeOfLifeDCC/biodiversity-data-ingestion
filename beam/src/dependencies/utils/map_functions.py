@@ -6,6 +6,7 @@ import requests
 import apache_beam as beam
 
 from lxml import etree
+from requests.exceptions import JSONDecodeError
 
 from dependencies.utils.common_functions import (
     check_field_existence,
@@ -102,6 +103,8 @@ def process_specimens_for_elasticsearch(sample):
                         ]["images"]
                 except KeyError:
                     pass
+                except JSONDecodeError:
+                    pass
 
     # Adding relationships
     if "relationships" in sample and len(sample["relationships"]) > 0:
@@ -158,6 +161,8 @@ def process_samples_for_dwh(sample, sample_type):
                     if len(images_response["results"]) > 0:
                         dwh_record["images_available"] = True
                 except KeyError:
+                    dwh_record["images_available"] = False
+                except JSONDecodeError:
                     dwh_record["images_available"] = False
             else:
                 dwh_record["images_available"] = False
@@ -446,6 +451,7 @@ def build_data_portal_record(element, bq_dataset_name, genome_notes, annotations
         sample["symbionts_assemblies"],
         sample["symbionts_analyses"],
         _,
+        _,
     ) = parse_data_records(element[1]["symbionts"])
     sample["symbionts_records"] = [
         {
@@ -459,6 +465,7 @@ def build_data_portal_record(element, bq_dataset_name, genome_notes, annotations
         sample["metagenomes_experiment"],
         sample["metagenomes_assemblies"],
         sample["metagenomes_analyses"],
+        _,
         _,
     ) = parse_data_records(element[1]["metagenomes"])
     sample["metagenomes_records"] = [
