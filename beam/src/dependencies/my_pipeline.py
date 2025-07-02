@@ -99,16 +99,38 @@ def biodiversity_etl(
         "metagenomes": dwh_metagenomes_collection.Normal,
     } | "Merge samples" >> beam.CoGroupByKey()
 
-    data_portal_collection = (
-        merged_collection
-        | "Build data portal dump"
-        >> beam.Map(
-            build_data_portal_record,
-            bq_dataset_name,
-            beam.pvalue.AsList(genome_notes),
-            beam.pvalue.AsList(annotations),
-        ).with_outputs()
-    )
+    if bq_dataset_name == "asg":
+        asg_species_groups = (
+            pipeline
+            | "Read ASG species groups from JSON file"
+            >> beam.io.ReadFromText(
+                "gs://prj-ext-prod-biodiv-data-in-asg-species-groups/asg_species_groups.jsonl"
+            )
+            | "Parse ASG species groups JSON"
+            >> beam.Map(lambda sample: json.loads(sample))
+        )
+        data_portal_collection = (
+            merged_collection
+            | "Build data portal dump"
+            >> beam.Map(
+                build_data_portal_record,
+                bq_dataset_name,
+                beam.pvalue.AsList(genome_notes),
+                beam.pvalue.AsList(annotations),
+                beam.pvalue.AsList(asg_species_groups),
+            ).with_outputs()
+        )
+    else:
+        data_portal_collection = (
+            merged_collection
+            | "Build data portal dump"
+            >> beam.Map(
+                build_data_portal_record,
+                bq_dataset_name,
+                beam.pvalue.AsList(genome_notes),
+                beam.pvalue.AsList(annotations),
+            ).with_outputs()
+        )
 
     data_portal_collection.normal | "Write data portal dump to Elasticsearch" >> beam.ParDo(
         WriteToElasticsearchDoFn(index="data_portal", project_name=bq_dataset_name)

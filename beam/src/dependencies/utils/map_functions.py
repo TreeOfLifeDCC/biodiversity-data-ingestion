@@ -164,8 +164,6 @@ def process_samples_for_dwh(sample, sample_type):
                     dwh_record["images_available"] = False
                 except JSONDecodeError:
                     dwh_record["images_available"] = False
-            else:
-                dwh_record["images_available"] = False
 
     if dwh_record["organism"]["text"]:
         dwh_record["commonName"] = get_common_name(dwh_record["organism"]["text"])
@@ -313,7 +311,9 @@ def process_samples_for_dwh(sample, sample_type):
         return host_sample["taxId"], dwh_record
 
 
-def build_data_portal_record(element, bq_dataset_name, genome_notes, annotations):
+def build_data_portal_record(
+    element, bq_dataset_name, genome_notes, annotations, asg_species_groups=None
+):
     # TODO: split this function
     phylogenetic_ranks = (
         "kingdom",
@@ -498,6 +498,15 @@ def build_data_portal_record(element, bq_dataset_name, genome_notes, annotations
         if len(sample["assemblies"]) != 0
         else sample["currentStatus"]
     )
+
+    # ASG species groups
+    if asg_species_groups is not None:
+        asg_species_groups_dict = {
+            group["scientific_name"]: group["species_group"]
+            for group in asg_species_groups
+        }
+        if sample["organism"] in asg_species_groups_dict:
+            sample["asg_species_group"] = asg_species_groups_dict[sample["organism"]]
 
     # request annotations
     annotations_dict = {
