@@ -367,19 +367,8 @@ def biodiversity_metadata_ingestion():
         `prj-ext-prod-biodiv-data-in.{project_name}.sampling_map_base` GROUP BY 
         geotag, lat, lon;
         """
-        CREATE_SAMPING_MAP_FILTER_OPTIONS_VIEW = f"""
-        CREATE OR REPLACE VIEW 
-        `prj-ext-prod-biodiv-data-in.{project_name}.sampling_map_filter_options` 
-        AS SELECT ARRAY_AGG(DISTINCT organism IGNORE NULLS ORDER BY organism) as 
-        all_organisms, ARRAY_AGG(DISTINCT common_name IGNORE NULLS ORDER BY common_name) 
-        as all_common_names, ARRAY_AGG(DISTINCT current_status IGNORE NULLS ORDER BY 
-        current_status) as all_current_statuses, ARRAY_AGG(DISTINCT 
-        experiment_type_item IGNORE NULLS ORDER BY experiment_type_item) as 
-        all_experiment_types FROM `prj-ext-prod-biodiv-data-in.{project_name}.sampling_map_base`, 
-        UNNEST(SPLIT(experiment_type, ', ')) as experiment_type_item;
-        """
-        sampling_map_base_view_job = BigQueryInsertJobOperator(
-            task_id="sampling_map_base_view_job",
+        sampling_map_base_view = BigQueryInsertJobOperator(
+            task_id=f"sampling_map_base_view_job_{project_name}",
             configuration={
                 "query": {
                     "query": CREATE_SAMPING_MAP_BASE_VIEW,
@@ -388,8 +377,8 @@ def biodiversity_metadata_ingestion():
                 }
             },
         )
-        sampling_map_aggregated_view_job = BigQueryInsertJobOperator(
-            task_id="sampling_map_aggregated_view_job",
+        sampling_map_aggregated_view = BigQueryInsertJobOperator(
+            task_id=f"sampling_map_aggregated_view_job_{project_name}",
             configuration={
                 "query": {
                     "query": CREATE_SAMPING_MAP_AGGREGATED_VIEW,
@@ -398,21 +387,8 @@ def biodiversity_metadata_ingestion():
                 }
             },
         )
-        sampling_map_filter_options_job = BigQueryInsertJobOperator(
-            task_id="sampling_map_filter_options_view_job",
-            configuration={
-                "query": {
-                    "query": CREATE_SAMPING_MAP_FILTER_OPTIONS_VIEW,
-                    "useLegacySql": False,
-                    "priority": "BATCH",
-                }
-            },
-        )
-        (
-            change_aliases_task
-            >> sampling_map_base_view_job
-            >> (sampling_map_aggregated_view_job, sampling_map_filter_options_job)
-        )
+        (change_aliases_task >> sampling_map_base_view >> sampling_map_aggregated_view)
+
         CREATE_METADATA_AGGREGATED_VIEW = f"""
         CREATE OR REPLACE VIEW 
         `prj-ext-prod-biodiv-data-in.{project_name}.metadata_aggregated` AS WITH 
@@ -421,25 +397,25 @@ def biodiversity_metadata_ingestion():
         organism.lifestage, organism.habitat FROM 
         `prj-ext-prod-biodiv-data-in.{project_name}.metadata` as main, 
         UNNEST(main.organisms) as organism WHERE organism.biosample_id IS NOT NULL 
-        AND organism.organism IS NOT NULL), sex_aggregates AS ( SELECT {project_name} as 
+        AND organism.organism IS NOT NULL), sex_aggregates AS ( SELECT '{project_name}' as 
         project_name, sex, COUNT(DISTINCT organism) as record_count, 
         COUNT(DISTINCT biosample_id) as biosample_count, STRING_AGG(DISTINCT 
         biosample_id, ',') as sample_biosample_ids, STRING_AGG(DISTINCT organism, ',') 
         as sample_organisms, STRING_AGG(DISTINCT current_status, ',') as 
         sample_statuses FROM base_data WHERE sex IS NOT NULL GROUP BY sex ), 
-        lifestage_aggregates AS ( SELECT {project_name} as project_name, lifestage, 
+        lifestage_aggregates AS ( SELECT '{project_name}' as project_name, lifestage, 
         COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) as 
         biosample_count, STRING_AGG(DISTINCT biosample_id, ',') as 
         sample_biosample_ids, STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
         STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
         WHERE lifestage IS NOT NULL GROUP BY lifestage ), habitat_aggregates AS 
-        ( SELECT {project_name} as project_name, habitat, COUNT(DISTINCT organism) as 
+        ( SELECT '{project_name}' as project_name, habitat, COUNT(DISTINCT organism) as 
         record_count, COUNT(DISTINCT biosample_id) as biosample_count, 
         STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
         STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
         STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
         WHERE habitat IS NOT NULL GROUP BY habitat ), cross_filter_data AS 
-        ( SELECT {project_name} as project_name, sex, lifestage, habitat, 
+        ( SELECT '{project_name}' as project_name, sex, lifestage, habitat, 
         COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) 
         as biosample_count FROM base_data GROUP BY sex, lifestage, habitat ) 
         SELECT 'sex' as dimension, project_name, sex as value, record_count, 
@@ -474,20 +450,20 @@ def biodiversity_metadata_ingestion():
         UNNEST(main.organisms) as organism LEFT JOIN UNNEST(main.raw_data) as 
         raw_data_item ON TRUE WHERE organism.biosample_id IS NOT NULL AND 
         organism.organism IS NOT NULL), instrument_platform_aggregates AS 
-        ( SELECT {project_name} as project_name, instrument_platform, 
+        ( SELECT '{project_name}' as project_name, instrument_platform, 
         COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) as 
         biosample_count, STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
         STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
         STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
         WHERE instrument_platform IS NOT NULL GROUP BY instrument_platform ), 
-        instrument_model_aggregates AS ( SELECT {project_name} as project_name, 
+        instrument_model_aggregates AS ( SELECT '{project_name}' as project_name, 
         instrument_model, COUNT(DISTINCT organism) as record_count, 
         COUNT(DISTINCT biosample_id) as biosample_count, 
         STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
         STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
         STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
         WHERE instrument_model IS NOT NULL GROUP BY instrument_model ), 
-        library_protocol_aggregates AS ( SELECT {project_name} as project_name, 
+        library_protocol_aggregates AS ( SELECT '{project_name}' as project_name, 
         library_construction_protocol, COUNT(DISTINCT organism) as record_count, 
         COUNT(DISTINCT biosample_id) as biosample_count, 
         STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
@@ -495,13 +471,13 @@ def biodiversity_metadata_ingestion():
         STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM 
         base_data WHERE library_construction_protocol IS NOT NULL GROUP BY 
         library_construction_protocol ), time_series_aggregates AS 
-        ( SELECT {project_name} as project_name, first_public, 
+        ( SELECT '{project_name}' as project_name, first_public, 
         COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) as 
         biosample_count, STRING_AGG(DISTINCT biosample_id, ',') as 
         sample_biosample_ids, STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
         STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
         WHERE first_public IS NOT NULL GROUP BY first_public ), cross_filter_data 
-        AS ( SELECT {project_name} as project_name, instrument_platform, 
+        AS ( SELECT '{project_name}' as project_name, instrument_platform, 
         instrument_model, library_construction_protocol, first_public, 
         COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) 
         as biosample_count FROM base_data GROUP BY instrument_platform, 
@@ -540,7 +516,7 @@ def biodiversity_metadata_ingestion():
 
         CREATE_TABLE_DATA_VIEW = f"""
         CREATE OR REPLACE VIEW `prj-ext-prod-biodiv-data-in.{project_name}.table_data` 
-        AS WITH base_data AS( SELECT {project_name} as project_name, 
+        AS WITH base_data AS( SELECT '{project_name}' as project_name, 
         main.current_status, main.tax_id, main.symbionts_status, 
         main.common_name, organism.biosample_id, organism.organism, organism.sex, 
         organism.lifestage, organism.habitat, raw_data_item.instrument_platform, 
@@ -562,8 +538,8 @@ def biodiversity_metadata_ingestion():
         symbionts_status, sex, lifestage, habitat, instrument_platform, 
         instrument_model, library_construction_protocol, first_public FROM grouped_data;
         """
-        metadata_aggregated_view_job = BigQueryInsertJobOperator(
-            task_id="metadata_aggregated_view_job",
+        metadata_aggregated_view = BigQueryInsertJobOperator(
+            task_id=f"metadata_aggregated_view_job_{project_name}",
             configuration={
                 "query": {
                     "query": CREATE_METADATA_AGGREGATED_VIEW,
@@ -572,8 +548,8 @@ def biodiversity_metadata_ingestion():
                 }
             },
         )
-        rawdata_aggregated_view_job = BigQueryInsertJobOperator(
-            task_id="rawdata_aggregated_view_job",
+        rawdata_aggregated_view = BigQueryInsertJobOperator(
+            task_id=f"rawdata_aggregated_view_job_{project_name}",
             configuration={
                 "query": {
                     "query": CREATE_RAW_DATA_AGGREGATED_VIEW,
@@ -582,8 +558,8 @@ def biodiversity_metadata_ingestion():
                 }
             },
         )
-        table_data_view_job = BigQueryInsertJobOperator(
-            task_id="table_data_view_job",
+        table_data_view = BigQueryInsertJobOperator(
+            task_id=f"table_data_view_job_{project_name}",
             configuration={
                 "query": {
                     "query": CREATE_TABLE_DATA_VIEW,
@@ -592,10 +568,11 @@ def biodiversity_metadata_ingestion():
                 }
             },
         )
-        change_aliases_task >> (
-            metadata_aggregated_view_job,
-            rawdata_aggregated_view_job,
-            table_data_view_job,
+        (
+            change_aliases_task
+            >> metadata_aggregated_view
+            >> rawdata_aggregated_view
+            >> table_data_view
         )
 
 
