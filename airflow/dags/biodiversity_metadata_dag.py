@@ -534,7 +534,7 @@ def biodiversity_metadata_ingestion():
         project_name, biosample_id, current_status, tax_id, symbionts_status, 
         common_name, organism, sex, lifestage, habitat, instrument_platform, 
         instrument_model, library_construction_protocol, first_public ) 
-        SELECT DISTINCT project_name, organism, common_name, current_status, 
+        SELECT DISTINCT project_name, organism, tax_id, common_name, current_status, 
         symbionts_status, sex, lifestage, habitat, instrument_platform, 
         instrument_model, library_construction_protocol, first_public FROM grouped_data;
         """
