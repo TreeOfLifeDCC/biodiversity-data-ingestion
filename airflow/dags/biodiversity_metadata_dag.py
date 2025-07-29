@@ -390,154 +390,154 @@ def biodiversity_metadata_ingestion():
         (change_aliases_task >> sampling_map_base_view >> sampling_map_aggregated_view)
 
         CREATE_METADATA_AGGREGATED_VIEW = f"""
-        CREATE OR REPLACE VIEW 
-        `prj-ext-prod-biodiv-data-in.{project_name}.metadata_aggregated` AS WITH 
-        base_data AS( SELECT main.current_status, main.tax_id, main.symbionts_status, 
-        main.common_name, organism.biosample_id, organism.organism, organism.sex, 
-        organism.lifestage, organism.habitat FROM 
-        `prj-ext-prod-biodiv-data-in.{project_name}.metadata` as main, 
-        UNNEST(main.organisms) as organism WHERE organism.biosample_id IS NOT NULL 
-        AND organism.organism IS NOT NULL), sex_aggregates AS ( SELECT '{project_name}' as 
-        project_name, sex, COUNT(DISTINCT organism) as record_count, 
-        COUNT(DISTINCT biosample_id) as biosample_count, STRING_AGG(DISTINCT 
-        biosample_id, ',') as sample_biosample_ids, STRING_AGG(DISTINCT organism, ',') 
-        as sample_organisms, STRING_AGG(DISTINCT current_status, ',') as 
-        sample_statuses FROM base_data WHERE sex IS NOT NULL GROUP BY sex ), 
-        lifestage_aggregates AS ( SELECT '{project_name}' as project_name, lifestage, 
-        COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) as 
-        biosample_count, STRING_AGG(DISTINCT biosample_id, ',') as 
-        sample_biosample_ids, STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
-        STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
-        WHERE lifestage IS NOT NULL GROUP BY lifestage ), habitat_aggregates AS 
-        ( SELECT '{project_name}' as project_name, habitat, COUNT(DISTINCT organism) as 
-        record_count, COUNT(DISTINCT biosample_id) as biosample_count, 
-        STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
-        STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
-        STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
-        WHERE habitat IS NOT NULL GROUP BY habitat ), cross_filter_data AS 
-        ( SELECT '{project_name}' as project_name, sex, lifestage, habitat, 
-        COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) 
-        as biosample_count FROM base_data GROUP BY sex, lifestage, habitat ) 
-        SELECT 'sex' as dimension, project_name, sex as value, record_count, 
-        biosample_count, sample_biosample_ids, sample_organisms, sample_statuses, 
-        CAST(NULL AS STRING) as filter_sex, CAST(NULL AS STRING) as filter_lifestage, 
-        CAST(NULL AS STRING) as filter_habitat FROM sex_aggregates UNION ALL SELECT 
-        'lifestage' as dimension, project_name, lifestage as value, record_count, 
-        biosample_count, sample_biosample_ids, sample_organisms, sample_statuses, 
-        CAST(NULL AS STRING) as filter_sex, CAST(NULL AS STRING) as filter_lifestage, 
-        CAST(NULL AS STRING) as filter_habitat FROM lifestage_aggregates UNION ALL 
-        SELECT 'habitat' as dimension, project_name, habitat as value, record_count, 
-        biosample_count, sample_biosample_ids, sample_organisms, sample_statuses, 
-        CAST(NULL AS STRING) as filter_sex, CAST(NULL AS STRING) as filter_lifestage, 
-        CAST(NULL AS STRING) as filter_habitat FROM habitat_aggregates UNION ALL 
-        SELECT 'cross_filter' as dimension, project_name, CONCAT(IFNULL(sex, 'NULL'), 
-        '|', IFNULL(lifestage, 'NULL'), '|', IFNULL(habitat, 'NULL')) as value, 
-        record_count, biosample_count, CAST(NULL AS STRING) as sample_biosample_ids, 
-        CAST(NULL AS STRING) as sample_organisms, CAST(NULL AS STRING) as 
-        sample_statuses, sex as filter_sex, lifestage as filter_lifestage, 
-        habitat as filter_habitat FROM cross_filter_data;
-        """
+               CREATE OR REPLACE VIEW 
+               `prj-ext-prod-biodiv-data-in.{project_name}.metadata_aggregated` AS WITH 
+               base_data AS( SELECT main.current_status, main.tax_id,  main.scientific_name, main.symbionts_status, 
+               main.common_name, organism.biosample_id, organism.organism, organism.sex, 
+               organism.lifestage, organism.habitat FROM 
+               `prj-ext-prod-biodiv-data-in.{project_name}.metadata` as main, 
+               UNNEST(main.organisms) as organism WHERE organism.biosample_id IS NOT NULL), 
+               sex_aggregates AS ( SELECT '{project_name}' as 
+               project_name, sex, COUNT(DISTINCT tax_id) as record_count, 
+               COUNT(DISTINCT biosample_id) as biosample_count, STRING_AGG(DISTINCT 
+               biosample_id, ',') as sample_biosample_ids, STRING_AGG(DISTINCT organism, ',') 
+               as sample_organisms, STRING_AGG(DISTINCT current_status, ',') as 
+               sample_statuses FROM base_data WHERE sex IS NOT NULL GROUP BY sex ), 
+               lifestage_aggregates AS ( SELECT '{project_name}' as project_name, lifestage, 
+               COUNT(DISTINCT tax_id) as record_count, COUNT(DISTINCT biosample_id) as 
+               biosample_count, STRING_AGG(DISTINCT biosample_id, ',') as 
+               sample_biosample_ids, STRING_AGG(DISTINCT scientific_name, ',') as sample_organisms, 
+               STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
+               WHERE lifestage IS NOT NULL GROUP BY lifestage ), habitat_aggregates AS 
+               ( SELECT '{project_name}' as project_name, habitat, COUNT(DISTINCT organism) as 
+               record_count, COUNT(DISTINCT biosample_id) as biosample_count, 
+               STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
+               STRING_AGG(DISTINCT scientific_name, ',') as sample_organisms, 
+               STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
+               WHERE habitat IS NOT NULL GROUP BY habitat ), cross_filter_data AS 
+               ( SELECT '{project_name}' as project_name, sex, lifestage, habitat, 
+               COUNT(DISTINCT tax_id) as record_count, COUNT(DISTINCT biosample_id) 
+               as biosample_count FROM base_data GROUP BY sex, lifestage, habitat ) 
+               SELECT 'sex' as dimension, project_name, sex as value, record_count, 
+               biosample_count, sample_biosample_ids, sample_organisms, sample_statuses, 
+               CAST(NULL AS STRING) as filter_sex, CAST(NULL AS STRING) as filter_lifestage, 
+               CAST(NULL AS STRING) as filter_habitat FROM sex_aggregates UNION ALL SELECT 
+               'lifestage' as dimension, project_name, lifestage as value, record_count, 
+               biosample_count, sample_biosample_ids, sample_organisms, sample_statuses, 
+               CAST(NULL AS STRING) as filter_sex, CAST(NULL AS STRING) as filter_lifestage, 
+               CAST(NULL AS STRING) as filter_habitat FROM lifestage_aggregates UNION ALL 
+               SELECT 'habitat' as dimension, project_name, habitat as value, record_count, 
+               biosample_count, sample_biosample_ids, sample_organisms, sample_statuses, 
+               CAST(NULL AS STRING) as filter_sex, CAST(NULL AS STRING) as filter_lifestage, 
+               CAST(NULL AS STRING) as filter_habitat FROM habitat_aggregates UNION ALL 
+               SELECT 'cross_filter' as dimension, project_name, CONCAT(IFNULL(sex, 'NULL'), 
+               '|', IFNULL(lifestage, 'NULL'), '|', IFNULL(habitat, 'NULL')) as value, 
+               record_count, biosample_count, CAST(NULL AS STRING) as sample_biosample_ids, 
+               CAST(NULL AS STRING) as sample_organisms, CAST(NULL AS STRING) as 
+               sample_statuses, sex as filter_sex, lifestage as filter_lifestage, 
+               habitat as filter_habitat FROM cross_filter_data;
+               """
         CREATE_RAW_DATA_AGGREGATED_VIEW = f"""
-        CREATE OR REPLACE VIEW 
-        `prj-ext-prod-biodiv-data-in.{project_name}.rawdata_aggregated` AS WITH 
-        base_data AS( SELECT main.current_status, main.tax_id, main.symbionts_status, 
-        main.common_name, organism.biosample_id, organism.organism, 
-        raw_data_item.instrument_platform, raw_data_item.instrument_model, 
-        raw_data_item.library_construction_protocol, CASE WHEN 
-        raw_data_item.first_public IS NOT NULL THEN SAFE.PARSE_DATE('%Y-%m-%d', 
-        raw_data_item.first_public) ELSE NULL END as first_public FROM 
-        `prj-ext-prod-biodiv-data-in.{project_name}.metadata` as main, 
-        UNNEST(main.organisms) as organism LEFT JOIN UNNEST(main.raw_data) as 
-        raw_data_item ON TRUE WHERE organism.biosample_id IS NOT NULL AND 
-        organism.organism IS NOT NULL), instrument_platform_aggregates AS 
-        ( SELECT '{project_name}' as project_name, instrument_platform, 
-        COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) as 
-        biosample_count, STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
-        STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
-        STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
-        WHERE instrument_platform IS NOT NULL GROUP BY instrument_platform ), 
-        instrument_model_aggregates AS ( SELECT '{project_name}' as project_name, 
-        instrument_model, COUNT(DISTINCT organism) as record_count, 
-        COUNT(DISTINCT biosample_id) as biosample_count, 
-        STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
-        STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
-        STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
-        WHERE instrument_model IS NOT NULL GROUP BY instrument_model ), 
-        library_protocol_aggregates AS ( SELECT '{project_name}' as project_name, 
-        library_construction_protocol, COUNT(DISTINCT organism) as record_count, 
-        COUNT(DISTINCT biosample_id) as biosample_count, 
-        STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
-        STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
-        STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM 
-        base_data WHERE library_construction_protocol IS NOT NULL GROUP BY 
-        library_construction_protocol ), time_series_aggregates AS 
-        ( SELECT '{project_name}' as project_name, first_public, 
-        COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) as 
-        biosample_count, STRING_AGG(DISTINCT biosample_id, ',') as 
-        sample_biosample_ids, STRING_AGG(DISTINCT organism, ',') as sample_organisms, 
-        STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
-        WHERE first_public IS NOT NULL GROUP BY first_public ), cross_filter_data 
-        AS ( SELECT '{project_name}' as project_name, instrument_platform, 
-        instrument_model, library_construction_protocol, first_public, 
-        COUNT(DISTINCT organism) as record_count, COUNT(DISTINCT biosample_id) 
-        as biosample_count FROM base_data GROUP BY instrument_platform, 
-        instrument_model, library_construction_protocol, first_public ) 
-        SELECT 'instrument_platform' as dimension, project_name, 
-        instrument_platform as value, record_count, biosample_count, 
-        sample_biosample_ids, sample_organisms, sample_statuses, 
-        CAST(NULL AS STRING) as filter_platform, CAST(NULL AS STRING) as 
-        filter_model, CAST(NULL AS STRING) as filter_protocol, CAST(NULL AS DATE) as 
-        filter_date FROM instrument_platform_aggregates UNION ALL SELECT 
-        'instrument_model' as dimension, project_name, instrument_model as value, 
-        record_count, biosample_count, sample_biosample_ids, sample_organisms, 
-        sample_statuses, CAST(NULL AS STRING) as filter_platform, 
-        CAST(NULL AS STRING) as filter_model, CAST(NULL AS STRING) as filter_protocol, 
-        CAST(NULL AS DATE) as filter_date FROM instrument_model_aggregates 
-        UNION ALL SELECT 'library_construction_protocol' as dimension, project_name, 
-        library_construction_protocol as value, record_count, biosample_count, 
-        sample_biosample_ids, sample_organisms, sample_statuses, CAST(NULL AS STRING) 
-        as filter_platform, CAST(NULL AS STRING) as filter_model, CAST(NULL AS STRING) 
-        as filter_protocol, CAST(NULL AS DATE) as filter_date FROM 
-        library_protocol_aggregates UNION ALL SELECT 'time_series' as 
-        dimension, project_name, CAST(first_public AS STRING) as value, 
-        record_count, biosample_count, sample_biosample_ids, sample_organisms, 
-        sample_statuses, CAST(NULL AS STRING) as filter_platform, CAST(NULL AS STRING) 
-        as filter_model, CAST(NULL AS STRING) as filter_protocol, CAST(NULL AS DATE) 
-        as filter_date FROM time_series_aggregates UNION ALL SELECT 'cross_filter' 
-        as dimension, project_name, CONCAT( IFNULL(instrument_platform, 'NULL'), '|', 
-        IFNULL(instrument_model, 'NULL'), '|', IFNULL(library_construction_protocol, 
-        'NULL'), '|', IFNULL(CAST(first_public AS STRING), 'NULL') ) as value, 
-        record_count, biosample_count, CAST(NULL AS STRING) as sample_biosample_ids, 
-        CAST(NULL AS STRING) as sample_organisms, CAST(NULL AS STRING) as 
-        sample_statuses, instrument_platform as filter_platform, instrument_model 
-        as filter_model, library_construction_protocol as filter_protocol, 
-        first_public as filter_date FROM cross_filter_data;
-        """
+               CREATE OR REPLACE VIEW 
+               `prj-ext-prod-biodiv-data-in.{project_name}.rawdata_aggregated` AS WITH 
+               base_data AS( SELECT main.current_status, main.tax_id, main.scientific_name, main.symbionts_status, 
+               main.common_name, organism.biosample_id, organism.organism, 
+               raw_data_item.instrument_platform, raw_data_item.instrument_model, 
+               raw_data_item.library_construction_protocol, CASE WHEN 
+               raw_data_item.first_public IS NOT NULL THEN SAFE.PARSE_DATE('%Y-%m-%d', 
+               raw_data_item.first_public) ELSE NULL END as first_public FROM 
+               `prj-ext-prod-biodiv-data-in.{project_name}.metadata` as main, 
+               UNNEST(main.organisms) as organism LEFT JOIN UNNEST(main.raw_data) as 
+               raw_data_item ON TRUE WHERE organism.biosample_id IS NOT NULL), 
+               instrument_platform_aggregates AS 
+               ( SELECT '{project_name}' as project_name, instrument_platform, 
+               COUNT(DISTINCT tax_id) as record_count, COUNT(DISTINCT biosample_id) as 
+               biosample_count, STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
+               STRING_AGG(DISTINCT scientific_name, ',') as sample_organisms, 
+               STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
+               WHERE instrument_platform IS NOT NULL GROUP BY instrument_platform ), 
+               instrument_model_aggregates AS ( SELECT '{project_name}' as project_name, 
+               instrument_model, COUNT(DISTINCT tax_id) as record_count, 
+               COUNT(DISTINCT biosample_id) as biosample_count, 
+               STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
+               STRING_AGG(DISTINCT scientific_name, ',') as sample_organisms, 
+               STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
+               WHERE instrument_model IS NOT NULL GROUP BY instrument_model ), 
+               library_protocol_aggregates AS ( SELECT '{project_name}' as project_name, 
+               library_construction_protocol, COUNT(DISTINCT tax_id) as record_count, 
+               COUNT(DISTINCT biosample_id) as biosample_count, 
+               STRING_AGG(DISTINCT biosample_id, ',') as sample_biosample_ids, 
+               STRING_AGG(DISTINCT scientific_name, ',') as sample_organisms, 
+               STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM 
+               base_data WHERE library_construction_protocol IS NOT NULL GROUP BY 
+               library_construction_protocol ), time_series_aggregates AS 
+               ( SELECT '{project_name}' as project_name, first_public, 
+               COUNT(DISTINCT tax_id) as record_count, COUNT(DISTINCT biosample_id) as 
+               biosample_count, STRING_AGG(DISTINCT biosample_id, ',') as 
+               sample_biosample_ids, STRING_AGG(DISTINCT scientific_name, ',') as sample_organisms, 
+               STRING_AGG(DISTINCT current_status, ',') as sample_statuses FROM base_data 
+               WHERE first_public IS NOT NULL GROUP BY first_public ), cross_filter_data 
+               AS ( SELECT '{project_name}' as project_name, instrument_platform, 
+               instrument_model, library_construction_protocol, first_public, 
+               COUNT(DISTINCT tax_id) as record_count, COUNT(DISTINCT biosample_id) 
+               as biosample_count FROM base_data GROUP BY instrument_platform, 
+               instrument_model, library_construction_protocol, first_public ) 
+               SELECT 'instrument_platform' as dimension, project_name, 
+               instrument_platform as value, record_count, biosample_count, 
+               sample_biosample_ids, sample_organisms, sample_statuses, 
+               CAST(NULL AS STRING) as filter_platform, CAST(NULL AS STRING) as 
+               filter_model, CAST(NULL AS STRING) as filter_protocol, CAST(NULL AS DATE) as 
+               filter_date FROM instrument_platform_aggregates UNION ALL SELECT 
+               'instrument_model' as dimension, project_name, instrument_model as value, 
+               record_count, biosample_count, sample_biosample_ids, sample_organisms, 
+               sample_statuses, CAST(NULL AS STRING) as filter_platform, 
+               CAST(NULL AS STRING) as filter_model, CAST(NULL AS STRING) as filter_protocol, 
+               CAST(NULL AS DATE) as filter_date FROM instrument_model_aggregates 
+               UNION ALL SELECT 'library_construction_protocol' as dimension, project_name, 
+               library_construction_protocol as value, record_count, biosample_count, 
+               sample_biosample_ids, sample_organisms, sample_statuses, CAST(NULL AS STRING) 
+               as filter_platform, CAST(NULL AS STRING) as filter_model, CAST(NULL AS STRING) 
+               as filter_protocol, CAST(NULL AS DATE) as filter_date FROM 
+               library_protocol_aggregates UNION ALL SELECT 'time_series' as 
+               dimension, project_name, CAST(first_public AS STRING) as value, 
+               record_count, biosample_count, sample_biosample_ids, sample_organisms, 
+               sample_statuses, CAST(NULL AS STRING) as filter_platform, CAST(NULL AS STRING) 
+               as filter_model, CAST(NULL AS STRING) as filter_protocol, CAST(NULL AS DATE) 
+               as filter_date FROM time_series_aggregates UNION ALL SELECT 'cross_filter' 
+               as dimension, project_name, CONCAT( IFNULL(instrument_platform, 'NULL'), '|', 
+               IFNULL(instrument_model, 'NULL'), '|', IFNULL(library_construction_protocol, 
+               'NULL'), '|', IFNULL(CAST(first_public AS STRING), 'NULL') ) as value, 
+               record_count, biosample_count, CAST(NULL AS STRING) as sample_biosample_ids, 
+               CAST(NULL AS STRING) as sample_organisms, CAST(NULL AS STRING) as 
+               sample_statuses, instrument_platform as filter_platform, instrument_model 
+               as filter_model, library_construction_protocol as filter_protocol, 
+               first_public as filter_date FROM cross_filter_data;
+               """
 
         CREATE_TABLE_DATA_VIEW = f"""
-        CREATE OR REPLACE VIEW `prj-ext-prod-biodiv-data-in.{project_name}.table_data` 
-        AS WITH base_data AS( SELECT '{project_name}' as project_name, 
-        main.current_status, main.tax_id, main.symbionts_status, 
-        main.common_name, organism.biosample_id, organism.organism, organism.sex, 
-        organism.lifestage, organism.habitat, raw_data_item.instrument_platform, 
-        raw_data_item.instrument_model, raw_data_item.library_construction_protocol, 
-        CASE WHEN raw_data_item.first_public IS NOT NULL 
-        THEN SAFE.PARSE_DATE('%Y-%m-%d', raw_data_item.first_public) 
-        ELSE NULL END as first_public FROM 
-        `prj-ext-prod-biodiv-data-in.{project_name}.metadata` 
-        as main, UNNEST(main.organisms) as organism LEFT JOIN UNNEST(main.raw_data) 
-        as raw_data_item ON TRUE WHERE organism.biosample_id IS NOT NULL AND 
-        organism.organism IS NOT NULL), grouped_data AS ( SELECT project_name, 
-        current_status, tax_id, symbionts_status, common_name, biosample_id, organism, 
-        sex, lifestage, habitat, instrument_platform, instrument_model, 
-        library_construction_protocol, first_public FROM base_data GROUP BY 
-        project_name, biosample_id, current_status, tax_id, symbionts_status, 
-        common_name, organism, sex, lifestage, habitat, instrument_platform, 
-        instrument_model, library_construction_protocol, first_public ) 
-        SELECT DISTINCT project_name, organism, tax_id, common_name, current_status, 
-        symbionts_status, sex, lifestage, habitat, instrument_platform, 
-        instrument_model, library_construction_protocol, first_public FROM grouped_data;
-        """
+               CREATE OR REPLACE VIEW `prj-ext-prod-biodiv-data-in.{project_name}.table_data` 
+               AS WITH base_data AS( SELECT '{project_name}' as project_name, 
+               main.current_status, main.tax_id, main.scientific_name, main.symbionts_status, 
+               main.common_name, organism.biosample_id, organism.organism, organism.sex, 
+               organism.lifestage, organism.habitat, raw_data_item.instrument_platform, 
+               raw_data_item.instrument_model, raw_data_item.library_construction_protocol, 
+               CASE WHEN raw_data_item.first_public IS NOT NULL 
+               THEN SAFE.PARSE_DATE('%Y-%m-%d', raw_data_item.first_public) 
+               ELSE NULL END as first_public FROM 
+               `prj-ext-prod-biodiv-data-in.{project_name}.metadata` 
+               as main, UNNEST(main.organisms) as organism LEFT JOIN UNNEST(main.raw_data) 
+               as raw_data_item ON TRUE WHERE organism.biosample_id IS NOT NULL), 
+               grouped_data AS ( SELECT project_name, 
+               current_status, tax_id, scientific_name, symbionts_status, common_name, biosample_id, organism, 
+               sex, lifestage, habitat, instrument_platform, instrument_model, 
+               library_construction_protocol, first_public FROM base_data GROUP BY 
+               project_name, biosample_id, current_status, tax_id, scientific_name, symbionts_status, 
+               common_name, organism, sex, lifestage, habitat, instrument_platform, 
+               instrument_model, library_construction_protocol, first_public ) 
+               SELECT DISTINCT project_name, organism, tax_id, scientific_name, common_name, current_status, 
+               symbionts_status, sex, lifestage, habitat, instrument_platform, 
+               instrument_model, library_construction_protocol, first_public FROM grouped_data;
+               """
         metadata_aggregated_view = BigQueryInsertJobOperator(
             task_id=f"metadata_aggregated_view_job_{project_name}",
             configuration={
