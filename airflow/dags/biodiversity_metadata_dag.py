@@ -331,8 +331,8 @@ def biodiversity_metadata_ingestion():
         CREATE OR REPLACE VIEW 
         `prj-ext-prod-biodiv-data-in.{project_name}.sampling_map_base` 
         AS WITH base_data AS(SELECT main.current_status, main.tax_id, 
-        main.symbionts_status, main.common_name, main.phylogenetic_tree, 
-        organism.biosample_id, organism.organism, 
+        main.symbionts_status, main.common_name, main.scientific_name, main.phylogenetic_tree, 
+        organism.biosample_id, 
         SAFE_CAST(organism.latitude AS FLOAT64) AS lat, 
         SAFE_CAST(organism.longitude AS FLOAT64) AS lon, 
         COALESCE( NULLIF(TRIM(raw_data_item.library_construction_protocol), ''), 
@@ -341,16 +341,15 @@ def biodiversity_metadata_ingestion():
         SAFE_CAST(organism.longitude AS STRING) ) AS geotag 
         FROM `prj-ext-prod-biodiv-data-in.{project_name}.metadata` AS main, 
         UNNEST(main.organisms) AS organism LEFT JOIN UNNEST(main.raw_data) AS 
-        raw_data_item ON TRUE WHERE organism.biosample_id IS NOT NULL AND 
-        organism.organism IS NOT NULL AND organism.latitude IS NOT NULL AND 
+        raw_data_item ON TRUE WHERE organism.biosample_id IS NOT NULL AND organism.latitude IS NOT NULL AND 
         organism.longitude IS NOT NULL AND SAFE_CAST(organism.latitude AS FLOAT64) 
         IS NOT NULL AND SAFE_CAST(organism.longitude AS FLOAT64) IS NOT NULL AND 
         SAFE_CAST(organism.latitude AS FLOAT64) BETWEEN -90 AND 90 AND 
         SAFE_CAST(organism.longitude AS FLOAT64) BETWEEN -180 AND 180 ) 
-        SELECT biosample_id, organism, current_status, tax_id, symbionts_status, 
+        SELECT biosample_id, scientific_name as organism, current_status, tax_id, symbionts_status, 
         common_name, phylogenetic_tree.kingdom.scientific_name AS Kingdom, 
         lat, lon, geotag, STRING_AGG(DISTINCT library_construction_protocol, ', ') 
-        AS experiment_type FROM base_data GROUP BY biosample_id, organism, 
+        AS experiment_type FROM base_data GROUP BY biosample_id, scientific_name, 
         current_status, tax_id, symbionts_status, common_name, 
         phylogenetic_tree.kingdom.scientific_name, lat, lon, geotag;
         """
