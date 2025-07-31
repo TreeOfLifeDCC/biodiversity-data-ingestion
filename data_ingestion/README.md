@@ -13,7 +13,7 @@ Replace `<xxxx>` with the actual value.
 
 1. Build docker image
 ```bash
-docker build -f Dockerfile -t europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/biodiversity-flex2:latest .
+docker build -f data_ingestion/Dockerfile -t europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/<image_name>:<your_tag> .
 ```
 2. Test locally
 ```bash
@@ -35,13 +35,13 @@ docker run --rm \
 ```
 3. Push your image to your repo in GCP Artifacts repository
 ```bash
- docker push europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/biodiversity-flex:<your_tag>
+ docker push europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/<image_name>:<your_tag>
 ```
 
 4. Create Dataflow Flex template
 ```bash
 gcloud dataflow flex-template build gs://<my-bucket>/taxonomy_flex_template.json \
-  --image europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/biodiversity-flex2:<your_tag> \
+  --image europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/<image_name>:<your_tag> \
   --sdk-language PYTHON \
   --metadata-file metadata_taxonomy.json \
   --project=<projectid> 
@@ -51,7 +51,7 @@ gcloud dataflow flex-template build gs://<my-bucket>/taxonomy_flex_template.json
 ```bash
 
 gcloud dataflow flex-template run "taxonomy-$(date +%Y%m%d-%H%M%S)" \                                                                    
-  --template-file-gcs-location "gs://<my-bucket>/test_jpng/flex-templates/taxonomy_template.json" \
+  --template-file-gcs-location "gs://<my-bucket>/taxonomy_flex_template.json" \
   --region=europe-west2 \
   --project=<projectid> \
   --parameters host=<host> \
