@@ -1,0 +1,64 @@
+[
+  { "name": "accession", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "tax_id", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "species", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "gbif_usageKey", "type": "INTEGER", "mode": "NULLABLE" },
+  { "name": "gbif_species", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "decimalLatitude", "type": "FLOAT", "mode": "NULLABLE" },
+  { "name": "decimalLongitude", "type": "FLOAT", "mode": "NULLABLE" },
+  { "name": "coordinateUncertaintyInMeters", "type": "FLOAT", "mode": "NULLABLE" },
+  { "name": "geodeticDatum", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "elevation", "type": "FLOAT", "mode": "NULLABLE" },
+  { "name": "eventDate", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "countryCode", "type": "STRING", "mode": "NULLABLE" },
+  {
+    "name": "gadm",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      {
+        "name": "level0",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "name", "type": "STRING", "mode": "NULLABLE" },
+          { "name": "gid", "type": "STRING", "mode": "NULLABLE" }
+        ]
+      },
+      {
+        "name": "level1",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "name", "type": "STRING", "mode": "NULLABLE" },
+          { "name": "gid", "type": "STRING", "mode": "NULLABLE" }
+        ]
+      },
+      {
+        "name": "level2",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "name", "type": "STRING", "mode": "NULLABLE" },
+          { "name": "gid", "type": "STRING", "mode": "NULLABLE" }
+        ]
+      },
+      {
+        "name": "level3",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "name", "type": "STRING", "mode": "NULLABLE" },
+          { "name": "gid", "type": "STRING", "mode": "NULLABLE" }
+        ]
+      }
+    ]
+  },
+  { "name": "basisOfRecord", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "occurrenceID", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "gbifID", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "institutionCode", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "collectionCode", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "catalogNumber", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "iucnRedListCategory", "type": "STRING", "mode": "NULLABLE" }
+]

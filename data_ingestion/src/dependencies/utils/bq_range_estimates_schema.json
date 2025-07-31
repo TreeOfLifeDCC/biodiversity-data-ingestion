@@ -1,0 +1,6 @@
+[
+  {"name": "accession", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "species", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "range_km2", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "note", "type": "STRING", "mode": "NULLABLE"}
+]
