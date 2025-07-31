@@ -1,0 +1,7 @@
+[
+  {"name": "accession", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "Biodiversity_portal", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "GTF", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "Ensembl_browser", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "gbif_url", "type": "STRING", "mode": "NULLABLE"}
+]
