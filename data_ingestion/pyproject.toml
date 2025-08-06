@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biodiversity-data-ingestion"
+version = "1.0.0"
+dependencies = [
+    "apache-beam[gcp]==2.64.0",
+    "lxml",
+    "elasticsearch",
+    "google-cloud-secret-manager",
+    "pygbif~=0.6.4",
+    "requests~=2.32.3",
+    "bs4~=0.0.2",
+    "beautifulsoup4~=4.12.3",
+    "pandas~=2.1.4",
+    "rasterio~=1.4.2",
+    "rasterstats~=0.20.0",
+    "geopandas~=1.0.1",
+    "numpy~=1.26.4",
+    "matplotlib~=3.9.2",
+    "pyproj~=3.7.1",
+    "shapely~=2.1.0",
+    "pyarrow==15.0.2"
+]
