@@ -8,7 +8,7 @@ from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.io.gcp.bigquery import WriteToBigQuery, BigQueryDisposition
 from apache_beam.io.gcp.bigquery_tools import parse_table_schema_from_json
 
-from src.dependencies.utils.transforms import EstimateRangeFn
+from dependencies.utils.transforms import EstimateRangeFn
 
 
 def range_estimation_pipeline(args, beam_args):
