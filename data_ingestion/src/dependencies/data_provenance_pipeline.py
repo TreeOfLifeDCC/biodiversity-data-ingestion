@@ -6,8 +6,8 @@ from apache_beam.io.filesystems import FileSystems
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.io import WriteToText
 
-from src.dependencies.utils.helpers import merge_gbif_url
-from src.dependencies.utils.transforms import FetchProvenanceMetadataFn
+from dependencies.utils.helpers import merge_gbif_url
+from dependencies.utils.transforms import FetchProvenanceMetadataFn
 
 
 def data_provenance_pipeline(args, beam_args):
