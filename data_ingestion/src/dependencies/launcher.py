@@ -7,7 +7,8 @@ from dependencies import (
     taxonomy_launcher,
     occurrences_launcher,
     cleaning_occs_launcher,
-    spatial_annotation_launcher
+    spatial_annotation_launcher,
+    range_estimation_launcher
 )
 
 
@@ -24,5 +25,7 @@ def launch_pipeline(argv):
         cleaning_occs_launcher.run(remaining_argv)
     elif args.pipeline == "spatial_annotation":
         spatial_annotation_launcher.run(remaining_argv)
+    elif args.pipeline == "range_estimation":
+        range_estimation_launcher.run(remaining_argv)
     else:
         raise ValueError(f"Unknown pipeline: {args.pipeline}")
