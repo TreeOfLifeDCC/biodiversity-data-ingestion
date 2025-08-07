@@ -6,8 +6,8 @@ from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.io.fileio import MatchFiles
 from apache_beam.io.gcp.bigquery import WriteToBigQuery, BigQueryDisposition
 from apache_beam.io.gcp.bigquery_tools import parse_table_schema_from_json
-from src.dependencies.utils.helpers import merge_annotations
-from src.dependencies.utils.transforms import (
+from dependencies.utils.helpers import merge_annotations
+from dependencies.utils.transforms import (
     GenerateUncertaintyAreaFn,
     AnnotateWithCHELSAFn,
     AnnotateWithBiogeoFn,
