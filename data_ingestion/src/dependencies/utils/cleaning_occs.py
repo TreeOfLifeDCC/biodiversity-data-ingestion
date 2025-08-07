@@ -3,7 +3,7 @@ import math
 import geopandas as gpd
 from shapely.geometry import Point
 
-from src.dependencies.utils.helpers import fetch_spatial_file_to_local
+from dependencies.utils.helpers import fetch_spatial_file_to_local
 
 
 def filter_zero_coords(record):
