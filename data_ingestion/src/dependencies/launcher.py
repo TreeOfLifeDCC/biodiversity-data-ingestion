@@ -8,7 +8,8 @@ from dependencies import (
     occurrences_launcher,
     cleaning_occs_launcher,
     spatial_annotation_launcher,
-    range_estimation_launcher
+    range_estimation_launcher,
+    data_provenance_launcher
 )
 
 
@@ -27,5 +28,7 @@ def launch_pipeline(argv):
         spatial_annotation_launcher.run(remaining_argv)
     elif args.pipeline == "range_estimation":
         range_estimation_launcher.run(remaining_argv)
+    elif args.pipeline == "data_provenance":
+        data_provenance_launcher.run(remaining_argv)
     else:
         raise ValueError(f"Unknown pipeline: {args.pipeline}")
