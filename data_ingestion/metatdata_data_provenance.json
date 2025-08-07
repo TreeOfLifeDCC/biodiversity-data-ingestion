@@ -1,0 +1,72 @@
+{
+  "name": "data-provenance-pipeline",
+  "description": "Extracts data source and provenance information from Elasticsearch based on validated taxonomy",
+  "parameters": [
+    {
+      "name": "pipeline",
+      "label": "Pipeline Identifier",
+      "helpText": "Which pipeline to launch (must be 'data_provenance')",
+      "defaultValue": "data_provenance"
+    },
+    {
+      "name": "host",
+      "label": "Elasticsearch Host",
+      "helpText": "The Elasticsearch host URL",
+      "regexes": ["^https?:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "user",
+      "label": "Elasticsearch User",
+      "helpText": "Username for connecting to Elasticsearch"
+    },
+    {
+      "name": "password",
+      "label": "Elasticsearch Password",
+      "helpText": "Password for Elasticsearch",
+      "isSecret": true
+    },
+    {
+      "name": "output",
+      "label": "Output File Prefix",
+      "helpText": "GCS or local path prefix for output files"
+    },
+    {
+      "name": "page_size",
+      "label": "Page Size",
+      "helpText": "Number of records per Elasticsearch page",
+      "defaultValue": "100"
+    },
+    {
+      "name": "max_pages",
+      "label": "Max Pages",
+      "helpText": "Maximum number of pages to fetch",
+      "defaultValue": "10"
+    },
+    {
+      "name": "taxonomy_path",
+      "label": "Validated Taxonomy Path",
+      "helpText": "Path to validated taxonomy JSONL file",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "bq_table",
+      "label": "BigQuery Table",
+      "helpText": "Optional BigQuery table to write output (project:dataset.table)",
+      "isOptional": true
+    },
+    {
+      "name": "bq_schema",
+      "label": "BigQuery Schema Path",
+      "helpText": "Optional GCS path to BigQuery schema JSON",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "temp_location",
+      "label": "GCS Temp Location",
+      "helpText": "GCS path for temporary files used in BigQuery I/O",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    }
+  ]
+}
