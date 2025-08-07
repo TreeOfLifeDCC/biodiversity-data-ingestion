@@ -3,7 +3,12 @@ Dispatcher that routes to the appropriate pipeline wrapper
 based on a `--pipeline` argument.
 """
 import argparse
-from dependencies import taxonomy_launcher, occurrences_launcher, cleaning_occs_launcher
+from dependencies import (
+    taxonomy_launcher,
+    occurrences_launcher,
+    cleaning_occs_launcher,
+    spatial_annotation_launcher
+)
 
 
 def launch_pipeline(argv):
@@ -17,5 +22,7 @@ def launch_pipeline(argv):
         occurrences_launcher.run(remaining_argv)
     elif args.pipeline == "cleaning_occs":
         cleaning_occs_launcher.run(remaining_argv)
+    elif args.pipeline == "spatial_annotation":
+        spatial_annotation_launcher.run(remaining_argv)
     else:
         raise ValueError(f"Unknown pipeline: {args.pipeline}")
