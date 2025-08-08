@@ -23,6 +23,10 @@ COPY data_ingestion/requirements.txt .
 COPY data_ingestion/setup.py .
 COPY data_ingestion/src src
 
+# DEV only
+# COPY out/ out
+COPY data/ data
+
 # Install geo/raster system spatial libraries to meet requirements of geospatial analysis modules in Python
 RUN apt-get update && apt-get install -y \
     build-essential \
