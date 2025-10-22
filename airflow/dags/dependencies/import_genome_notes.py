@@ -1,3 +1,5 @@
+import math
+from datetime import datetime
 from typing import List, Dict, Optional, Any
 import asyncio
 
@@ -12,7 +14,7 @@ import warnings
 TOKEN_URL = "https://wellcomeopenresearch.org/api/token"
 GATEWAY_URL = "https://gateway.f1000.com/gateway/231"
 EBI_API_BASE = "https://www.ebi.ac.uk/ena/browser/api/xml/"
-MAX_CONCURRENT_REQUESTS = 10
+MAX_CONCURRENT_REQUESTS = 1
 REQUEST_TIMEOUT = 30.0
 
 
@@ -325,9 +327,10 @@ async def main():
             }
 
             # Fetch article IDs
-            article_ids = (await fetch(session, GATEWAY_URL, headers))["members"][0][
-                "ids"
-            ]
+            article_ids = (
+                await get_all_ids_async('https://wellcomeopenresearch.org/content',
+                                        content_type="ARTICLE", show=100,
+                                        concurrency=10))
             article_version_ids = await extract_article_versions(
                 session, article_ids, headers
             )
@@ -360,3 +363,66 @@ async def main():
             return genome_notes
         except Exception as e:
             print(f"An error occurred during processing: {e}")
+
+async def fetch_page(session, base_url, params):
+    """Fetch a single page asynchronously and return its JSON content."""
+    async with session.get(base_url, params=params) as resp:
+        resp.raise_for_status()
+        return await resp.json()
+
+async def get_all_ids_async(base_url: str, content_type: str = "ARTICLE", show: int = 100, concurrency: int = 10):
+    """
+    Asynchronously fetch all content IDs from the Wellcome Open Research API.
+
+    Args:
+        base_url (str): The API base URL (e.g. 'https://wellcomeopenresearch.org/content')
+        content_type (str): Content type filter (default: 'ARTICLE')
+        show (int): Number of records per page (default: 20)
+        concurrency (int): Max number of pages fetched concurrently.
+
+    Returns:
+        list[str]: A list of all content IDs.
+    """
+    params = {"contentTypes": content_type, "page": 1, "show": show}
+
+    async with aiohttp.ClientSession() as session:
+        print("Fetching first page to detect total...")
+        first_page_data = await fetch_page(session, base_url, params)
+
+        total = first_page_data.get("total", 0)
+        if total == 0:
+            print("No data found.")
+            return []
+
+        total_pages = math.ceil(total / show)
+        print(f"Total records: {total}, pages: {total_pages}")
+
+        # Detect where the content list is stored
+        items = first_page_data.get("contents") or first_page_data.get("content") or first_page_data.get("results") or []
+        all_ids = [item.get("id") or item.get("uuid") for item in items if isinstance(item, dict)]
+
+        # Prepare page tasks
+        pages = list(range(2, total_pages + 1))
+
+        # Semaphore to control concurrency
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def fetch_with_semaphore(page_num):
+            async with semaphore:
+                p = {"contentTypes": content_type, "page": page_num, "show": show}
+                data = await fetch_page(session, base_url, p)
+                items = data.get("contents") or data.get("content") or data.get("results") or []
+                return [item.get("id") or item.get("uuid") for item in items if isinstance(item, dict)]
+
+        # Fetch all pages concurrently
+        tasks = [asyncio.create_task(fetch_with_semaphore(page)) for page in pages]
+        print(f"Fetching {len(tasks)} remaining pages asynchronously...")
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        # Flatten all results
+        for r in results:
+            all_ids.extend(r)
+
+        print(f"✅ Collected {len(all_ids)} IDs in total.")
+        return all_ids
+
