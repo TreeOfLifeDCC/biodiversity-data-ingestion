@@ -1,4 +1,5 @@
 import math
+from datetime import datetime
 from typing import List, Dict, Optional, Any
 import asyncio
 
@@ -11,7 +12,7 @@ import warnings
 
 
 TOKEN_URL = "https://wellcomeopenresearch.org/api/token"
-GATEWAY_URL = "https://gateway.f1000.com/gateway/231"
+GATEWAY_URL = "https://wellcomeopenresearch.org/content?gatewayIds[0]=231&gatewayIds[1]=239&gatewayIds[2]=240&gatewayIds[3]=255&gatewayIds[4]=241"
 EBI_API_BASE = "https://www.ebi.ac.uk/ena/browser/api/xml/"
 MAX_CONCURRENT_REQUESTS = 1
 REQUEST_TIMEOUT = 30.0
@@ -327,9 +328,7 @@ async def main():
 
             # Fetch article IDs
             article_ids = (
-                await get_all_ids_async('https://wellcomeopenresearch.org/content',
-                                        content_type="ARTICLE", show=100,
-                                        concurrency=10))
+                await get_all_ids_async(GATEWAY_URL))
             article_version_ids = await extract_article_versions(
                 session, article_ids, headers
             )
