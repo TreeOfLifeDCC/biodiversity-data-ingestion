@@ -5,7 +5,7 @@ import asyncio
 import aiohttp
 from collections import defaultdict
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup,  XMLParsedAsHTMLWarning
 from xml.etree import ElementTree as ET
 import warnings
 
@@ -229,6 +229,7 @@ async def parse_genome_notes(
         )
         if not html_text:
             continue
+        warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
         soup = BeautifulSoup(html_text, "html.parser")
         article_study_ids = []
 
