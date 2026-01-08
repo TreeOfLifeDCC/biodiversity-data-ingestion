@@ -2,7 +2,7 @@ import argparse
 import json
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
-from src.dependencies.utils.transforms import BiogeoSummaryNestedFn
+from dependencies.utils.transforms import BiogeoSummaryNestedFn
 
 def run(args, beam_args):
     options = PipelineOptions(beam_args)

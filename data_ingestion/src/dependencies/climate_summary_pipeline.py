@@ -2,7 +2,7 @@ import argparse
 import json
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
-from src.dependencies.utils.transforms import ClimateSummaryFn
+from dependencies.utils.transforms import ClimateSummaryFn
 
 
 def climate_summary_pipeline(args, beam_args):
