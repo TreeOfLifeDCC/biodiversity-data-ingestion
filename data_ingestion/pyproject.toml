@@ -10,7 +10,7 @@ dependencies = [
     "lxml",
     "elasticsearch",
     "google-cloud-secret-manager",
-    "pygbif~=0.6.4",
+    "pygbif==0.6.5",  # TODO Pinned to 0.6.5. To be updated to 0.6.6
     "requests~=2.32.3",
     "bs4~=0.0.2",
     "beautifulsoup4~=4.12.3",
