@@ -7,7 +7,7 @@ ENV LC_ALL=C.UTF-8
 # Copy SDK entrypoint binary from Apache Beam image, which makes it possible to
 # use the image as SDK container image. If you explicitly depend on
 # apache-beam in setup.py, use the same version of Beam in both files.
-COPY --from=apache/beam_python3.12_sdk:2.62.0 /opt/apache/beam /opt/apache/beam
+COPY --from=apache/beam_python3.12_sdk:2.64.0 /opt/apache/beam /opt/apache/beam
 
 # Copy Flex Template launcher binary from the launcher image, which makes it
 # possible to use the image as a Flex Template base image.
@@ -65,6 +65,12 @@ RUN pip check
 # Optionally, list all installed dependencies.
 # The output can be used to seed requirements.txt for reproducible builds.
 RUN pip freeze
+
+# Force the SDK harness to run in the default Python environment of the Docker container.
+# This avoids the ModuleNotFound Error.
+# See documentation for costum container images - Commons issues:
+# https://docs.cloud.google.com/dataflow/docs/guides/build-container-image
+ENV RUN_PYTHON_SDK_IN_DEFAULT_ENVIRONMENT=1
 
 # Set the entrypoint to Apache Beam SDK launcher, which allows this image
 # to be used as an SDK container image.
