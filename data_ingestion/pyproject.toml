@@ -27,4 +27,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["dependencies*","..."]
+include = ["dependencies","dependencies.*"]
