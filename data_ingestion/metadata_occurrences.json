@@ -3,6 +3,25 @@
   "description": "Search GBIF occurrences for the species with validated taxonomy.",
   "parameters": [
     {
+      "name": "runner",
+      "label": "Runner Type",
+      "helpText": "The Beam runner to use (e.g., DataflowRunner)",
+      "defaultValue": "DataflowRunner"
+    },
+    {
+      "name": "sdk_container_image",
+      "label": "Worker SDK Container Image",
+      "helpText": "Container image URI used for the Python SDK harness on Dataflow workers. This must contain your packaged pipelines and dependencies.",
+      "isOptional": true
+    },
+    {
+      "name": "experiments",
+      "label": "Experiments",
+      "helpText": "Comma-separated Dataflow experiments. For custom containers, Runner v2 is required. Use 'use_runner_v2' for batch.",
+      "defaultValue": "use_runner_v2",
+      "isOptional": true
+    },
+    {
       "name": "pipeline",
       "label": "Pipeline Identifier",
       "helpText": "Which pipeline to launch (must be 'occurrences')",
