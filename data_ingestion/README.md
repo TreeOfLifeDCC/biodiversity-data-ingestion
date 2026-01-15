@@ -26,7 +26,7 @@ Download it from here: https://drive.google.com/drive/folders/1AQ-vggPieKmCjHA65
 
 
 ```bash
-docker build -f data_ingestion/Dockerfile -t europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/<image_name>:<your_tag> .
+docker build -f Dockerfile -t europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/<image_name>:<your_tag> .
 ```
 ### 2. Test locally
 
@@ -163,12 +163,10 @@ docker run --rm \
 ### 3. Push your image to your repo in GCP Artifacts repository
 
 ```bash
- docker push europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/<image_name>:<your_tag>
+gcloud builds submit . --tag europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/<image_name>:<your_tag> --project <projectid>
 ```
 
 ### 4. Create Dataflow Flex template
-
-Repeat the following command per pipeline:
 
 ```bash
 gcloud dataflow flex-template build gs://<my-bucket>/taxonomy_flex_template.json \
@@ -179,6 +177,28 @@ gcloud dataflow flex-template build gs://<my-bucket>/taxonomy_flex_template.json
 ```
 
 ### 5. Run template
+
+The Flex Template uses a custom Python package that must be available in Dataflow workers.
+To ensure workers can import the pipeline code, the job must be run with a custom SDK container image.
+
+When running the template (via gcloud, Airflow, or API), always pass:
+
+```
+--parameters sdk_container_image=europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/<image_name>:<your_tag>
+```
+This image must be the same image used to build the Flex Template and must contain the installed pipeline package (e.g. dependencies).
+
+Also, Runner v2 is required for custom SDK containers in batch pipelines. Also pass:
+
+```bash
+--parameters experiments=use_runner_v2
+```
+Flex Templates use one container to launch the job and a different container to run workers.
+If `sdk_container_image` is not provided, Dataflow workers default to the Apache Beam SDK image, which does not contain this pipeline’s code and will fail with:
+
+```bash 
+ModuleNotFoundError: No module named 'dependencies'
+```
 
 Repeat the following command per pipeline:
 
@@ -197,6 +217,46 @@ gcloud dataflow flex-template run "taxonomy-$(date +%Y%m%d-%H%M%S)" \
   --parameters output="gs://<my-bucket>/flex_taxonomy" \
   --parameters pipeline=taxonomy \
   --parameters runner=DataflowRunner
+  --parameters sdk_container_image=europe-west2-docker.pkg.dev/<projectid>/biodiversity-images/<image_name>:<your_tag> \
+  --parameters experiments=use_runner_v2
 ```
 **Expected output**:
 Same as above for each pipeline but in GSC and BiqQuery.
+
+## Recommended object naming in Google Cloud Storage
+
+Main GS bucket: `<your-bucket>`
+
+Main “folder” name: `biodiv-pipelines-prod`
+
+Dev name: `biodive-pipelines-dev`
+
+### Pipelines "folder" structure: 
+
+```bash
+
+├── data
+│   ├── bioregions
+│   ├── climate
+│   └── spatial_processing
+├── out
+│    ├── metadata
+│    ├── occurrences_clean
+│    ├── occurrences_raw
+│    ├── spatial
+│    ├── taxonomy
+│
+├── schemes
+├── flex-templates
+├── staging
+
+```
+### GSC object naming structure:
+
+`<your-bucket>/biodiv-pipelines-prod/<any_above>`
+
+**Example:** 
+
+**In:** `<your-bucket>/biodiv-pipelines-prod/data/climate/<any_other_related_object>`
+
+**Out:** `<your-bucket>/biodiv-pipelines-prod/out/occurrences_clean/occ_.*,jsonl`
