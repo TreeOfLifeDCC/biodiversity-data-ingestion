@@ -260,3 +260,22 @@ Dev name: `biodive-pipelines-dev`
 **In:** `<your-bucket>/biodiv-pipelines-prod/data/climate/<any_other_related_object>`
 
 **Out:** `<your-bucket>/biodiv-pipelines-prod/out/occurrences_clean/occ_.*,jsonl`
+
+### BigQuery Tables
+
+**BigQuery dataset:** `gbdp`
+
+**Tables:**
+
+> **bp:** it stands for biodiveristy pipelines.
+
+> **integ:** it stands for data integration in BigQuery via SQL statements. 
+
+1. `bp_taxonomy_validated` → Taxonomic information from ENA and validated with GBIF species service.
+2. `bp_gbif_occurrences` → Cleaned occurrence data. 
+3. `bp_spatial_annotations` → Annotated occurrence data. 
+4. `bp_species_range_estimates` → Range size estimates based on cleaned occurrence data. Convex hull/EOO. 
+5. `bp_provenance_metadata` → URLs from data sources. 
+6. `bp_summ_cleaning` → Summary of cleaning pipeline output. 
+7. `bp_metadata_runs` → TODO: Table with logs for pipeline runs. 
+8. `integ_genome_geatures` → Nested table containing all the tables above in Nested format by genome accession number. 
