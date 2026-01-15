@@ -17,11 +17,11 @@ COPY --from=gcr.io/dataflow-templates-base/python312-template-launcher-base:late
 ARG WORKDIR=/template
 WORKDIR ${WORKDIR}
 
-COPY data_ingestion/main.py .
-COPY data_ingestion/pyproject.toml .
-COPY data_ingestion/requirements.txt .
-COPY data_ingestion/setup.py .
-COPY data_ingestion/src src
+COPY main.py .
+COPY pyproject.toml .
+COPY requirements.txt .
+COPY setup.py .
+COPY src src
 
 # DEV only
 # COPY out/ out
