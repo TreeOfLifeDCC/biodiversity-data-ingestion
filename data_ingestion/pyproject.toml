@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "biodiversity-data-ingestion"
 version = "1.0.0"
 dependencies = [
-    "apache-beam[gcp]==2.64.0",
+    "apache-beam[gcp]==2.70.0",
     "lxml",
     "elasticsearch==8.15.1",
     "google-cloud-secret-manager",
