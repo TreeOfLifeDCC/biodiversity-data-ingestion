@@ -179,23 +179,12 @@ class WriteSpeciesOccurrencesFn(DoFn):
         self.output_dir = output_dir
         self.max_records = max_records
 
-        # Beam metrics
-        self.success_counter = Metrics.counter("WriteSpeciesOccurrencesFn", "SUCCESS")
-        self.skipped_counter = Metrics.counter("WriteSpeciesOccurrencesFn", "SKIPPED")
-        self.failure_counter = Metrics.counter("WriteSpeciesOccurrencesFn", "FAILURES")
-
     def setup(self):
         self.gbif_client = gbif_occ
 
     def process(self, record):
         species = record.get('scientificName')  # Name from ENA
         usage_key = record.get('gbif_usageKey')
-
-        if not species or usage_key is None:
-            self.skipped_counter.inc()
-            yield {'species': species, 'status': 'skipped'}
-            return
-
         safe_name = sanitize_species_name(species)
         filename = f"occ_{safe_name}.jsonl"
         out_path = f"{self.output_dir}/{filename}"
@@ -244,11 +233,7 @@ class WriteSpeciesOccurrencesFn(DoFn):
                     f.write((line + '\n').encode('utf-8'))
             FileSystems.rename([tmp_path], [out_path])
 
-            self.success_counter.inc()
-            yield {'species': species, 'count': len(occurrences)}
-
         except Exception as e:
-            self.failure_counter.inc()
             yield pvalue.TaggedOutput('dead', {
                 'species': species,
                 'error': str(e)
