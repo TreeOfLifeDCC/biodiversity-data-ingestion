@@ -44,33 +44,6 @@ def occurrences_pipeline(args, beam_args):
             )
         )
 
-    # Post-pipeline: extract metrics and write summary
-    result = p.run()
-    result.wait_until_finish()
-
-    query = result.metrics().query(MetricsFilter().with_namespace("WriteSpeciesOccurrencesFn"))
-
-    success = skipped = failures = 0
-    for counter in query['counters']:
-        name = counter.key.metric.name
-        value = counter.committed
-        if name == "SUCCESS":
-            success = value
-        elif name == "SKIPPED":
-            skipped = value
-        elif name == "FAILURES":
-            failures = value
-
-    summary = {
-        "SUCCESS": success,
-        "SKIPPED": skipped,
-        "FAILURES": failures
-    }
-
-    with FileSystems.create(args.output_dir + "/summary_occ_download.jsonl") as f:
-        f.write(json.dumps(summary).encode("utf-8"))
-        f.write(b"\n")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch and write GBIF occurrences per species")
