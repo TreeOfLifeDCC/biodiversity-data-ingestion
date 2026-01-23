@@ -1,7 +1,6 @@
 # Dataflow Flex Templates for the Biodiversity pipelines
 
 The entry point is `main.py`. This calls `launcher.py`, which contains the `launch_pipeline` function that runs the pipeline via the `--pipeline` command line.
-(Note: the GCS and BigQuery steps in the pipelines have not yet been tested with the Flex template.)
 
 **Implemented pipelines:**
 
@@ -200,7 +199,7 @@ If `sdk_container_image` is not provided, Dataflow workers default to the Apache
 ModuleNotFoundError: No module named 'dependencies'
 ```
 
-Repeat the following command per pipeline:
+Repeat the following command per pipeline using the respective parameters:
 
 ```bash
 
@@ -221,7 +220,7 @@ gcloud dataflow flex-template run "taxonomy-$(date +%Y%m%d-%H%M%S)" \
   --parameters experiments=use_runner_v2
 ```
 **Expected output**:
-Same as above for each pipeline but in GSC and BiqQuery.
+Same as above for each pipeline but in GCS and BiqQuery.
 
 ## Recommended object naming in Google Cloud Storage
 
