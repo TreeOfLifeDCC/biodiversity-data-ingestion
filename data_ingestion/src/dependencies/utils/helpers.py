@@ -87,11 +87,16 @@ def fetch_spatial_file_to_local(shapefile_path: str, local_dir: str) -> str:
         os.makedirs(local_dir)
 
     match_result = FileSystems.match([f"{base_dir}/*"])[0]
-    for metadata in match_result.metadata_list:
-        fname = os.path.basename(metadata.path)
-        dest_path = os.path.join(local_dir, fname)
-        with FileSystems.open(metadata.path) as fsrc, open(dest_path, "wb") as fdst:
-            fdst.write(fsrc.read())
+    metadata_list = match_result.metadata_list
+    for metadata in metadata_list:
+        file_name = os.path.basename(metadata.path)
+        dest_path = os.path.join(local_dir, file_name)
+        # Guard against IsDirectoryError. Listed when using gs:// paths
+        if dest_path == local_dir:
+            continue
+        with FileSystems.open(metadata.path) as file_surce:
+            with open(dest_path, "wb") as file_dest:
+                file_dest.write(file_surce.read())
 
     return os.path.join(local_dir, shp_name)
 
