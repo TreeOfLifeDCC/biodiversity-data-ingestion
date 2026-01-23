@@ -442,7 +442,7 @@ class AnnotateWithBiogeoFn(DoFn):
         self.output_key = output_key
 
     def setup(self):
-        local_path = fetch_spatial_file_to_local(self.vector_path, "/tmp/biogeo_vector")
+        local_path = fetch_spatial_file_to_local(self.vector_path, "/tmp/biogeo_vector/")
         self.gdf = gpd.read_file(local_path)
 
         if self.gdf.crs.to_string() != "EPSG:4326":
