@@ -45,6 +45,11 @@
       "isSecret": true
     },
     {
+      "name": "index",
+      "label": "Elasticsearch Index",
+      "helpText": "Name of the index to query in Elasticsearch"
+    },
+    {
       "name": "output",
       "label": "Output File Prefix",
       "helpText": "GCS or local path prefix for output files"
