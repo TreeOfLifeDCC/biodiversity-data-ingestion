@@ -1,0 +1,51 @@
+{
+  "name": "range-estimation-pipeline",
+  "description": "Calculates the range size as the extend of occurrence using minimum convex hulls",
+  "parameters": [
+    {
+      "name": "sdk_container_image",
+      "label": "Worker SDK Container Image",
+      "helpText": "Container image URI used for the Python SDK harness on Dataflow workers. This must contain your packaged pipelines and dependencies.",
+      "isOptional": true
+    },
+    {
+      "name": "experiments",
+      "label": "Experiments",
+      "helpText": "Comma-separated Dataflow experiments. For custom containers, Runner v2 is required. Use 'use_runner_v2' for batch.",
+      "defaultValue": "use_runner_v2",
+      "isOptional": true
+    },
+    {
+      "name": "pipeline",
+      "label": "Pipeline Identifier",
+      "helpText": "Which pipeline to launch (must be 'range_area')",
+      "defaultValue": "range_area"
+    },
+    {
+      "name": "input_glob",
+      "label": "Input Occurrence Files",
+      "helpText": "Glob for cleaned JSONL files (e.g., gs://bucket/occurrences/clean/occ_*.jsonl)",
+      "regexes": ["^gs:\\/\\/[^[:space:]]+$"]
+    },
+    {
+      "name": "bq_table",
+      "label": "BigQuery Table",
+      "helpText": "Fully qualified BigQuery table name (project.dataset.table)",
+      "isOptional": true
+    },
+    {
+      "name": "bq_schema",
+      "label": "BigQuery Schema Path",
+      "helpText": "GCS path to BigQuery schema JSON",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "temp_location",
+      "label": "GCS Temp Path",
+      "helpText": "Temporary GCS path used for staging BQ data",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    }
+  ]
+}

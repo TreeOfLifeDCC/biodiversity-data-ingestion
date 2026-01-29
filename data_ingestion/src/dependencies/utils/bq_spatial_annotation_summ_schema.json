@@ -1,0 +1,236 @@
+[
+  { "name": "accession", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "species", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "tax_id", "type": "INTEGER", "mode": "REQUIRED" },
+  {
+    "name": "clim_CHELSA",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      { "name": "bio1", "type": "RECORD", "mode": "NULLABLE", "fields": [
+          { "name": "mean", "type": "FLOAT" },
+          { "name": "sd", "type": "FLOAT" },
+          { "name": "median", "type": "FLOAT" },
+          { "name": "p5", "type": "FLOAT" },
+          { "name": "p95", "type": "FLOAT" },
+          { "name": "min", "type": "FLOAT" },
+          { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio2", "type": "RECORD", "mode": "NULLABLE", "fields": [
+          { "name": "mean", "type": "FLOAT" },
+          { "name": "sd", "type": "FLOAT" },
+          { "name": "median", "type": "FLOAT" },
+          { "name": "p5", "type": "FLOAT" },
+          { "name": "p95", "type": "FLOAT" },
+          { "name": "min", "type": "FLOAT" },
+          { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio3", "type": "RECORD", "mode": "NULLABLE", "fields": [
+          { "name": "mean", "type": "FLOAT" },
+          { "name": "sd", "type": "FLOAT" },
+          { "name": "median", "type": "FLOAT" },
+          { "name": "p5", "type": "FLOAT" },
+          { "name": "p95", "type": "FLOAT" },
+          { "name": "min", "type": "FLOAT" },
+          { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio4", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio5", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio6", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio7", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio8", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio9", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio10", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio11", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio12", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio13", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio14", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio15", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio16", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio17", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      },
+      { "name": "bio18", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+          ]
+      },
+      { "name": "bio19", "type": "RECORD", "mode": "NULLABLE", "fields": [
+            { "name": "mean", "type": "FLOAT" },
+            { "name": "sd", "type": "FLOAT" },
+            { "name": "median", "type": "FLOAT" },
+            { "name": "p5", "type": "FLOAT" },
+            { "name": "p95", "type": "FLOAT" },
+            { "name": "min", "type": "FLOAT" },
+            { "name": "max", "type": "FLOAT" }
+      ]
+      }
+    ]
+  },
+  {
+    "name": "biogeo_Ecoregion",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      {
+        "name": "realm",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "count", "type": "INTEGER" },
+          { "name": "values", "type": "STRING", "mode": "REPEATED" }
+        ]
+      },
+      {
+        "name": "biome",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "count", "type": "INTEGER" },
+          { "name": "values", "type": "STRING", "mode": "REPEATED" }
+        ]
+      },
+      {
+        "name": "ecoregion",
+        "type": "RECORD",
+        "mode": "NULLABLE",
+        "fields": [
+          { "name": "count", "type": "INTEGER" },
+          { "name": "values", "type": "STRING", "mode": "REPEATED" }
+        ]
+      }
+    ]
+  }
+]

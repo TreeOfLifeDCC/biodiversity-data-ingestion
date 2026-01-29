@@ -1,0 +1,91 @@
+{
+  "name": "taxonomy-pipeline",
+  "description": "Fetches and validates taxonomy data using ENA taxonomy and GBIF taxonomic backbone to extract usageKeys for occurrences download",
+  "parameters": [
+    {
+      "name": "sdk_container_image",
+      "label": "Worker SDK Container Image",
+      "helpText": "Container image URI used for the Python SDK harness on Dataflow workers. This must contain your packaged pipelines and dependencies.",
+      "isOptional": true
+    },
+    {
+      "name": "experiments",
+      "label": "Experiments",
+      "helpText": "Comma-separated Dataflow experiments. For custom containers, Runner v2 is required. Use 'use_runner_v2' for batch.",
+      "defaultValue": "use_runner_v2",
+      "isOptional": true
+    },
+    {
+      "name": "pipeline",
+      "label": "Pipeline Identifier",
+      "helpText": "Which pipeline to launch (required by the dispatcher)"
+    },
+    {
+      "name": "host",
+      "label": "Elasticsearch Host",
+      "helpText": "The Elasticsearch host URL",
+      "regexes": ["^https?:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "user",
+      "label": "Elasticsearch User",
+      "helpText": "Username for connecting to Elasticsearch"
+    },
+    {
+      "name": "password",
+      "label": "Elasticsearch Password",
+      "helpText": "Password for Elasticsearch",
+      "isSecret": true
+    },
+    {
+      "name": "index",
+      "label": "Elasticsearch Index",
+      "helpText": "Name of the index to query in Elasticsearch"
+    },
+    {
+      "name": "size",
+      "label": "Page Size",
+      "helpText": "Number of records per page",
+      "defaultValue": "10"
+    },
+    {
+      "name": "pages",
+      "label": "Max Pages",
+      "helpText": "Maximum number of pages to fetch",
+      "defaultValue": "1"
+    },
+    {
+      "name": "sleep",
+      "label": "ENA Sleep Delay",
+      "helpText": "Time in seconds to sleep between ENA API requests",
+      "defaultValue": "0.25",
+      "isOptional": true
+    },
+    {
+      "name": "output",
+      "label": "Output Path (GCS)",
+      "helpText": "GCS path prefix for output files",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "bq_table",
+      "label": "BigQuery Table",
+      "helpText": "Fully qualified BigQuery table name (project.dataset.table)",
+      "isOptional": true
+    },
+    {
+      "name": "bq_schema",
+      "label": "BigQuery Schema Path",
+      "helpText": "GCS path to BigQuery schema JSON",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "temp_location",
+      "label": "GCS Temp Path",
+      "helpText": "Temporary GCS path used for staging BQ data",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    }
+  ]
+}
