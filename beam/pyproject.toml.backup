@@ -11,3 +11,9 @@ dependencies = [
   "elasticsearch",
   "google-cloud-secret-manager"
 ]
+
+[tool.setuptools]
+packages = ["dependencies"]
+
+[tool.setuptools.package-dir]
+"" = "src"

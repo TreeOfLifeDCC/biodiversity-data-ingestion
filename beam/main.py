@@ -12,8 +12,10 @@ in the runtime environment.
 
 import logging
 
-from dependencies import launcher
+from src.dependencies import launcher
+from src.dependencies import aegis_launcher
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
-    launcher.run()
+    # launcher.run()
+    aegis_launcher.run()

@@ -1,7 +1,7 @@
 import json
 import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions
-from aegis_transforms import transform_to_aegis_format
+from apache_beam.options.pipeline_options import PipelineOptions, GoogleCloudOptions
+from dependencies.aegis_transforms import transform_to_aegis_format
 from datetime import datetime
 from elasticsearch import Elasticsearch
 from google.cloud import secretmanager
@@ -27,6 +27,12 @@ def aegis_etl(
     """
 
     pipeline_options = PipelineOptions(pipeline_options_args)
+
+    # Explicitly set Google Cloud options to ensure project is configured
+    google_cloud_options = pipeline_options.view_as(GoogleCloudOptions)
+    if not google_cloud_options.project:
+        google_cloud_options.project = 'prj-ext-prod-biodiv-data-in'
+
     pipeline = beam.Pipeline(options=pipeline_options)
 
     # Step 1: Read input data
@@ -39,7 +45,7 @@ def aegis_etl(
     # Step 2: Group samples by tax_id
     samples_by_taxid = (
         samples
-        | "Key by tax_id" >> beam.Map(lambda sample: (sample.get("tax_id", "unknown"), sample))
+        | "Key by tax_id" >> beam.Map(lambda sample: (sample.get("taxId", "unknown"), sample))
         | "Group by tax_id" >> beam.GroupByKey()
     )
 
@@ -82,11 +88,7 @@ class WriteToAegisElasticsearchDoFn(beam.DoFn):
                     f"{self.project_name}_elasticsearch_password/versions/latest"
         }).payload.data.decode("UTF-8")
 
-        self.es = Elasticsearch(
-            [f"https://{host}"],
-            http_auth=("elastic", password),
-            verify_certs=True
-        )
+        self.es = Elasticsearch([host], http_auth=("elastic", password))
 
     def start_bundle(self):
         self.actions = []

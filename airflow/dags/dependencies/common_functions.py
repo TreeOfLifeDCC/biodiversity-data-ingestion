@@ -46,7 +46,7 @@ def start_aegis_beam(bucket_name):
 
     body = {
         "launchParameter": {
-            "jobName": "aegis-ingestion-2025-02-04",
+            "jobName": "aegis-ingestion-2026-02-10",
             "parameters": {
                 "input_path": f"gs://{bucket_name}/*jsonl",
                 "output_path": f"gs://{bucket_name}",
@@ -57,9 +57,9 @@ def start_aegis_beam(bucket_name):
                 "machineType": "e2-medium",
                 "maxWorkers": 24,
                 "stagingLocation": "gs://dataflow-staging-europe-west2-153439618737/staging",
-                "sdkContainerImage": f"{region}-docker.pkg.dev/{gc_project_name}/apache-beam-pipelines/aegis_etl:20250204-000000",
+                "sdkContainerImage": f"{region}-docker.pkg.dev/{gc_project_name}/apache-beam-pipelines/aegis_etl:20260210-102832",
             },
-            "containerSpecGcsPath": f"gs://{gc_project_name}_cloudbuild/aegis_etl-20250204-000000.json",
+            "containerSpecGcsPath": f"gs://{gc_project_name}_cloudbuild/aegis_etl.json",
         }
     }
 

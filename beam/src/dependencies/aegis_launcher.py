@@ -1,5 +1,5 @@
 import argparse
-import aegis_pipeline
+from dependencies import aegis_pipeline
 
 
 def run(argv: list[str] | None = None):
@@ -32,10 +32,17 @@ def run(argv: list[str] | None = None):
     pipeline_args, other_args = parser.parse_known_args(argv)
 
     # create and run the pipeline
+    # pipeline = aegis_pipeline.aegis_etl(
+    #     input_path=pipeline_args.input_path,
+    #     output_path=pipeline_args.output_path,
+    #     project_name=pipeline_args.project_name,
+    #     pipeline_options_args=other_args
+    # )
+
     pipeline = aegis_pipeline.aegis_etl(
         input_path=pipeline_args.input_path,
         output_path=pipeline_args.output_path,
-        project_name=pipeline_args.project_name,
+        project_name='aegis',
         pipeline_options_args=other_args
     )
 

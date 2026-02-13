@@ -1,0 +1,36 @@
+{
+  "image": "europe-west2-docker.pkg.dev/prj-ext-prod-biodiv-data-in/apache-beam-pipelines/aegis_etl:20260213-110739",
+  "sdk_info": {
+    "language": "PYTHON"
+  },
+  "metadata": {
+    "name": "AEGIS data ETL",
+    "description": "A Flex Template that ingests AEGIS genomics data from ENA/BioSamples and updates Elasticsearch indices",
+    "parameters": [
+      {
+        "name": "input_path",
+        "label": "Input path",
+        "helpText": "The path and filename prefix for input files. Example: gs://prj-ext-prod-biodiv-data-in-aegis/*.jsonl",
+        "regexes": [
+          "^gs:\\/\\/[^\\n\\r]+$"
+        ]
+      },
+      {
+        "name": "output_path",
+        "label": "Output destination",
+        "helpText": "The path and filename prefix for writing the output. Example: gs://prj-ext-prod-biodiv-data-in-aegis/output",
+        "regexes": [
+          "^gs:\\/\\/[^\\n\\r]+$"
+        ]
+      },
+      {
+        "name": "project_name",
+        "label": "Project name",
+        "helpText": "Project name for AEGIS pipeline (should be 'aegis')",
+        "regexes": [
+          "^aegis$"
+        ]
+      }
+    ]
+  }
+}
