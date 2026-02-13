@@ -57,7 +57,7 @@ def start_aegis_beam(bucket_name):
                 "machineType": "e2-medium",
                 "maxWorkers": 24,
                 "stagingLocation": "gs://dataflow-staging-europe-west2-153439618737/staging",
-                "sdkContainerImage": f"{region}-docker.pkg.dev/{gc_project_name}/apache-beam-pipelines/aegis_etl:20260210-102832",
+                "sdkContainerImage": f"{region}-docker.pkg.dev/{gc_project_name}/apache-beam-pipelines/aegis_etl:latest",
             },
             "containerSpecGcsPath": f"gs://{gc_project_name}_cloudbuild/aegis_etl.json",
         }

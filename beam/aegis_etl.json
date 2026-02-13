@@ -1,5 +1,5 @@
 {
-  "image": "europe-west2-docker.pkg.dev/prj-ext-prod-biodiv-data-in/apache-beam-pipelines/aegis_etl:20260213-110739",
+  "image": "europe-west2-docker.pkg.dev/prj-ext-prod-biodiv-data-in/apache-beam-pipelines/aegis_etl:latest",
   "sdk_info": {
     "language": "PYTHON"
   },
