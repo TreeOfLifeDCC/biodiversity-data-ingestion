@@ -12,19 +12,16 @@ from dependencies.common_functions import start_aegis_beam
 def get_aegis_metadata(study_id: str, bucket_name: str) -> None:
     from dependencies import collect_metadata_experiments_assemblies
 
-    # Collect metadata for the study
     metadata = collect_metadata_experiments_assemblies.main(
         study_id,
         "AEGIS",
         bucket_name
     )
 
-    # Set up GCS path
     base = ObjectStoragePath(f"gs://google_cloud_default@{bucket_name}")
     base.mkdir(exist_ok=True)
     path = base / f"{study_id}.jsonl"
 
-    # Write metadata to file (one sample per line)
     with path.open("w") as file:
         for sample_id, record in metadata.items():
             file.write(f"{json.dumps(record)}\n")
@@ -47,12 +44,10 @@ def aegis_metadata_ingestion():
     Elasticsearch indices for AEGIS project
     """
 
-    # Get AEGIS project config
     aegis_config = aegis_projects["PRJEB80366"]
     study_id = "PRJEB80366"
     bucket_name = aegis_config["bucket_name"]
 
-    # task flow
     metadata_task = get_aegis_metadata(study_id, bucket_name)
     beam_task = trigger_aegis_beam_pipeline(bucket_name)
 
