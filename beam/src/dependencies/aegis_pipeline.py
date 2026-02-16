@@ -90,21 +90,17 @@ class WriteToAegisElasticsearchDoFn(beam.DoFn):
 
         self.es = Elasticsearch([host], http_auth=("elastic", password))
 
-        # alias to point to the current index
+        # alias
         alias_name = "data_portal"
-        try:
-            if self.es.indices.exists_alias(name=alias_name):
-                old_indices = self.es.indices.get_alias(name=alias_name)
-                actions = []
-                for old_index in old_indices:
-                    actions.append({"remove": {"index": old_index, "alias": alias_name}})
-                actions.append({"add": {"index": self.index, "alias": alias_name}})
-                self.es.indices.update_aliases(body={"actions": actions})
-            else:
-                # create new alias
-                self.es.indices.put_alias(index=self.index, name=alias_name)
-        except Exception as e:
-            print(f"Warning: Could not create alias {alias_name}: {e}")
+        if self.es.indices.exists_alias(name=alias_name):
+            old_indices = self.es.indices.get_alias(name=alias_name)
+            actions = []
+            for old_index in old_indices:
+                actions.append({"remove": {"index": old_index, "alias": alias_name}})
+            actions.append({"add": {"index": self.index, "alias": alias_name}})
+            self.es.indices.update_aliases(body={"actions": actions})
+        else:
+            self.es.indices.put_alias(index=self.index, name=alias_name)
 
     def start_bundle(self):
         self.actions = []
