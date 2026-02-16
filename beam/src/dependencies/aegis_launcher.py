@@ -4,12 +4,10 @@ from dependencies import aegis_pipeline
 
 def run(argv: list[str] | None = None):
 
-    # set up argument parser
     parser = argparse.ArgumentParser(
         description='AEGIS ETL pipeline - transforms sample data for Elasticsearch'
     )
 
-    # define arguments the pipeline needs
     parser.add_argument(
         "--input_path",
         required=True,
@@ -28,7 +26,6 @@ def run(argv: list[str] | None = None):
         help='Project name (should be "aegis")'
     )
 
-    # parse the arguments
     pipeline_args, other_args = parser.parse_known_args(argv)
 
     # create and run the pipeline
