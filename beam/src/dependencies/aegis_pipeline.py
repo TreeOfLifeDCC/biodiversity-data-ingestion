@@ -5,6 +5,7 @@ from dependencies.aegis_transforms import transform_to_aegis_format
 from datetime import datetime
 from elasticsearch import Elasticsearch
 from google.cloud import secretmanager
+from pathlib import Path
 
 
 def aegis_etl(
@@ -72,6 +73,21 @@ class WriteToAegisElasticsearchDoFn(beam.DoFn):
         }).payload.data.decode("UTF-8")
 
         self.es = Elasticsearch([host], http_auth=("elastic", password))
+
+
+        if not self.es.indices.exists(index=self.index):
+            module_dir = Path(__file__).parent
+            settings_file = module_dir / "elasticsearch_settings" / "aegis_settings.json"
+            with open(settings_file, "r") as f:
+                settings = json.load(f)
+
+            self.es.indices.create(index=self.index, **settings)
+
+            mappings_file = module_dir / "elasticsearch_settings" / "data_portal_mapping.json"
+            with open(mappings_file, "r") as f:
+                mappings = json.load(f)
+
+            self.es.indices.put_mapping(index=self.index, **mappings)
 
         # alias
         alias_name = "data_portal"

@@ -1,12 +1,16 @@
 """Setup file for biodiversity-data-ingestion package."""
 
-import setuptools
+from setuptools import setup, find_packages
 
-setuptools.setup(
-    name='biodiversity-data-ingestion',
-    version='1.0.0',
+setup(
+    name='aegis-etl',
+    version='0.1',
+    packages=find_packages(where='src'),
     package_dir={'': 'src'},
-    packages=setuptools.find_packages(where='src'),
+    package_data={
+        'dependencies': ['elasticsearch_settings/*.json'],
+    },
+    include_package_data=True,
     install_requires=[
         'apache-beam[gcp]==2.62.0',
         'lxml',
