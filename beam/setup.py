@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='aegis-etl',
+    name='biodiversity-data-ingestion',
     version='0.1',
     packages=find_packages(where='src'),
     package_dir={'': 'src'},
