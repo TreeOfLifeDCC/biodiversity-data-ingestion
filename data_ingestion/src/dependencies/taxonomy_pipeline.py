@@ -81,7 +81,6 @@ def taxonomy_pipeline(args, beam_args):
 
             (
                     validated
-                    | "PrepareBQRecords" >> beam.Map(lambda x: x)  # Already dicts
                     | "WriteToBigQuery" >> beam.io.WriteToBigQuery(
                         table=args.bq_table,
                         schema=table_schema,
