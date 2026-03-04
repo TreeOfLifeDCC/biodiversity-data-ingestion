@@ -4,7 +4,13 @@ import apache_beam as beam
 from apache_beam.io.filesystems import FileSystems
 from apache_beam.options.pipeline_options import PipelineOptions
 
-from dependencies.utils.helpers import convert_dict_to_table_schema
+from dependencies.utils.helpers import (
+    convert_dict_to_table_schema,
+    to_kv_existing_tax_id,
+    to_kv_tax_id,
+    keep_new_tax_ids,
+    to_gate_row
+)
 from dependencies.utils.transforms import FetchESFn, ENATaxonomyFn, ValidateNamesFn
 
 
@@ -29,14 +35,44 @@ def taxonomy_pipeline(args, beam_args):
             )
         )
 
+        # Gate: selecting only new annotations
+        if args.bq_gate_table:
+            #reading existing tax ids from the BQ bp_log_taxonomy table
+            existing_tax_ids = (
+                p
+                | "ReadExistingTaxIds" >> beam.io.ReadFromBigQuery(
+                    query=f"""
+                        SELECT DISTINCT tax_id 
+                        FROM `{args.bq_gate_table}` 
+                        WHERE tax_id IS NOT NULL
+                    """,
+                    use_standard_sql=True,
+                    gcs_location=args.temp_location,
+                )
+                | "BQTaxIdToKV" >> beam.Map(to_kv_existing_tax_id)
+            )
+            # Selecting only new tax ids
+            es_records = (
+                {
+                    "es": es_records | "ESTaxIdToKV" >> beam.Map(to_kv_tax_id),
+                    "bq": existing_tax_ids,
+                }
+                | "CoGroupESvsBQ" >> beam.CoGroupByKey()
+                | "KeepOnlyNewTaxIds" >> beam.FlatMap(keep_new_tax_ids)
+            )
+
+
+
         # Enrich from ENA API (with retry + optional delay)
         enriched = (
             es_records
             | "ReshuffleBeforeENA" >> beam.Reshuffle()
-            | "FetchENATaxonomy" >> beam.ParDo(ENATaxonomyFn(
-                sleep_seconds=args.sleep,
-                include_lineage=True
-            ))
+            | "FetchENATaxonomy" >> beam.ParDo(
+                ENATaxonomyFn(
+                    sleep_seconds=args.sleep,
+                    include_lineage=True
+                )
+            )
             | "ReshuffleAfterENA" >> beam.Reshuffle()
         )
 
@@ -49,7 +85,42 @@ def taxonomy_pipeline(args, beam_args):
         validated = validated_output.validated
         unmatched = validated_output.to_check
 
+        # Adding logs to bp_log_taxonomy Gate table append (validated + to_check)
+        if args.bq_gate_table and args.temp_location:
+            gate_schema = (
+                "tax_id:STRING,"
+                "accession:STRING,"
+                "species:STRING,"
+                "gbif_usageKey:INTEGER,"
+                "gbif_matchType:STRING,"
+                "gbif_rank:STRING,"
+                "gbif_scientificName:STRING,"
+                "gbif_status:STRING,"
+                "gbif_confidence:INTEGER,"
+                "date_seen:TIMESTAMP,"
+                "status:STRING"
+            )
+
+            validated_gate = validated | "ToGateValidated" >> beam.Map(to_gate_row, status="validated")
+            unmatched_gate = unmatched | "ToGateToCheck" >> beam.Map(to_gate_row, status="to_check")
+
+            gate_rows = (validated_gate, unmatched_gate) | "FlattenGateRows" >> beam.Flatten()
+
+            (
+                gate_rows
+                | "WriteGateToBigQuery" >> beam.io.WriteToBigQuery(
+                    table=args.bq_gate_table,
+                    schema=gate_schema,
+                    method="FILE_LOADS",
+                    custom_gcs_temp_location=args.temp_location,
+                    write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                    create_disposition=beam.io.BigQueryDisposition.CREATE_NEVER,  # table already exists
+                )
+            )
+
+
         # Write validated records
+        # Persisted checked taxonomy. Input for the occurrence pipeline.
         (
             validated
             | "ToJSONValidated" >> beam.Map(json.dumps)
@@ -80,15 +151,15 @@ def taxonomy_pipeline(args, beam_args):
                 table_schema = convert_dict_to_table_schema(schema_dict)
 
             (
-                    validated
-                    | "WriteToBigQuery" >> beam.io.WriteToBigQuery(
-                        table=args.bq_table,
-                        schema=table_schema,
-                        method="FILE_LOADS",
-                        custom_gcs_temp_location=args.temp_location,
-                        write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
-                        create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
-                    )
+                validated
+                | "WriteToBigQuery" >> beam.io.WriteToBigQuery(
+                    table=args.bq_table,
+                    schema=table_schema,
+                    method="FILE_LOADS",
+                    custom_gcs_temp_location=args.temp_location,
+                    write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                    create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+                )
             )
 
 
@@ -113,6 +184,7 @@ if __name__ == "__main__":
     parser.add_argument("--bq_table", help="BigQuery table (project.dataset.table)")
     parser.add_argument("--temp_location", help="GCS temp path for BQ file loads", required=False)
     parser.add_argument("--bq_schema", help="Path to BQ schema JSON")
+    parser.add_argument("--bq_gate_table", help="BigQuery table for gating (project.dataset.table)")
 
     args, beam_args = parser.parse_known_args()
     taxonomy_pipeline(args, beam_args)
