@@ -83,7 +83,7 @@ class WriteToAegisElasticsearchDoFn(beam.DoFn):
 
             self.es.indices.create(index=self.index, **settings)
 
-            mappings_file = module_dir / "elasticsearch_settings" / "data_portal_mapping.json"
+            mappings_file = module_dir / "elasticsearch_settings" / "data_portal.mapping.json"
             with open(mappings_file, "r") as f:
                 mappings = json.load(f)
 
