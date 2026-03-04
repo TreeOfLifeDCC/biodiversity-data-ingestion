@@ -53,16 +53,19 @@ class FetchESFn(DoFn):
             return (max_pages <= 0) or (i < max_pages)
 
         while should_continue(page_i):
-            query = {
+            search_kwargs = {
+                "index": self.index,
                 "size": self.page_size,
-                "sort": {"tax_id": "asc"},
-                "_source": ["tax_id", "annotation.accession", "annotation.species"],
+                "sort": [{"tax_id": "asc"}],
                 "query": {"term": {"annotation_complete": "Done"}},
+                "_source": ["tax_id", "annotation.accession", "annotation.species"],
             }
-            if after is not None:
-                query["search_after"] = after
 
-            response = self.es.search(index=self.index, body=query)
+            if after is not None:
+                search_kwargs["search_after"] = after
+
+            response = self.es.search(**search_kwargs)
+
             hits = response.get("hits", {}).get("hits", [])
             if not hits:
                 break
@@ -90,6 +93,7 @@ class FetchESFn(DoFn):
                 yield {"accession": accession, "species": species, "tax_id": tax_id}
 
             last_sort = hits[-1].get("sort")
+
             if last_sort is None:
                 raise RuntimeError(
                     "Elasticsearch response missing 'sort' values for search_after pagination. "
