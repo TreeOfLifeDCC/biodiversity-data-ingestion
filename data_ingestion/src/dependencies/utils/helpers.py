@@ -3,6 +3,7 @@ import os
 import re
 from apache_beam.io.filesystems import FileSystems
 from apache_beam.io.gcp.internal.clients import bigquery as bq
+from datetime import datetime, timezone
 
 def sanitize_species_name(species: str) -> str:
     """
@@ -118,3 +119,159 @@ def merge_gbif_url(kv):
     for record in provenance_records:
         record["gbif_url"] = gbif_url
         yield record
+
+# -----------------------------------
+# Helpers for the Bigquery gate table
+# -----------------------------------
+def to_kv_tax_id(rec) -> tuple:
+    """
+        Convert an ES taxonomy record into a key-value pair keyed by tax_id.
+
+        This is used prior to CoGroupByKey to join Elasticsearch records
+        against the BigQuery gate table.
+
+        Parameters
+        ----------
+        rec : dict
+            Record emitted from FetchESFn. Expected to contain at least:
+            - tax_id (str)
+            - accession (str)
+            - species (str)
+
+        Returns
+        -------
+        tuple[str, dict]
+            (tax_id, original_record)
+
+        Notes
+        -----
+        tax_id is explicitly cast to string to ensure key type consistency
+        with the BigQuery gate table.
+        """
+    return (str(rec["tax_id"]), rec)
+
+def to_kv_existing_tax_id(row) -> tuple:
+    """
+        Convert a BigQuery gate table row into a keyed marker for join.
+
+        This transform prepares existing tax_ids for a CoGroupByKey join
+        against ES-derived records in order to filter already-ingested taxa.
+
+        Parameters
+        ----------
+        row : dict
+            Row returned from ReadFromBigQuery containing:
+            - tax_id (str)
+
+        Returns
+        -------
+        tuple[str, bool]
+            (tax_id, True)
+
+        Notes
+        -----
+        The boolean value is a presence marker only; its content is irrelevant.
+        tax_id is cast to string to ensure deterministic join behavior.
+        """
+    # row is a dict like {"tax_id": 123}
+    return (str(row["tax_id"]), True)
+
+
+def keep_new_tax_ids(kv):
+    """
+        Filter ES records to retain only tax_ids not present in the gate table.
+
+        This function operates on the output of CoGroupByKey where:
+          - key = tax_id
+          - value = {'es': [...], 'bq': [...]}
+
+        Parameters
+        ----------
+        kv : tuple[str, dict]
+            (tax_id, grouped_records) where grouped_records contains:
+                - 'es': list of ES records
+                - 'bq': list of matching gate records (empty if unseen)
+
+        Yields
+        ------
+        dict
+            ES record(s) whose tax_id does not exist in the gate table.
+
+        Notes
+        -----
+        If any entry exists in the 'bq' group, the tax_id is considered
+        already processed and is filtered out.
+
+        This implements a set-difference operation:
+            ES_tax_ids − Gate_tax_ids
+        """
+    tax_id, groups = kv
+    es_recs = groups.get("es", [])
+    seen = groups.get("bq", [])
+    if seen:
+        return
+    for r in es_recs:
+        yield r
+
+
+def to_gate_row(rec: dict, status: str) -> dict:
+    """
+        Transform a taxonomy validation record into a row suitable
+        for insertion into the BigQuery gate table.
+
+        Parameters
+        ----------
+        rec : dict
+            Record produced after ValidateNamesFn. Expected keys include:
+                - tax_id
+                - accession
+                - species
+                - gbif_usageKey
+                - gbif_matchType
+                - gbif_rank
+                - gbif_scientificName
+                - gbif_status
+                - gbif_confidence
+
+        status : str
+            Processing status label. Typically:
+                - 'validated'
+                - 'to_check'
+
+        Returns
+        -------
+        dict
+            Row matching the schema of bq_taxonomy_gate:
+                - tax_id (STRING)
+                - accession (STRING)
+                - species (STRING)
+                - gbif_usageKey (INTEGER)
+                - matchtype (STRING)
+                - gbif_rank (STRING)
+                - gbif_scientificName (STRING)
+                - gbif_status (STRING)
+                - gbif_confidence (INTEGER)
+                - date_seen (TIMESTAMP, UTC)
+                - status (STRING)
+
+        Notes
+        -----
+        All fields are explicitly cast to their BigQuery types to ensure
+        deterministic schema compliance during FILE_LOADS.
+
+        date_seen is generated at transformation time using timezone-aware UTC.
+        """
+    return {
+        "tax_id": str(rec.get("tax_id")) if rec.get("tax_id") is not None else None,
+        "accession": str(rec.get("accession")) if rec.get("accession") is not None else None,
+        "species": str(rec.get("species")) if rec.get("species") is not None else None,
+        "gbif_usageKey": int(rec["gbif_usageKey"]) if rec.get("gbif_usageKey") is not None else None,
+        "gbif_matchType": str(rec.get("gbif_matchType")) if rec.get("gbif_matchType") is not None else None,
+        "gbif_rank": str(rec.get("gbif_rank")) if rec.get("gbif_rank") is not None else None,
+        "gbif_scientificName": str(rec.get("gbif_scientificName")) if rec.get("gbif_scientificName") is not None else None,
+        "gbif_status": str(rec.get("gbif_status")) if rec.get("gbif_status") is not None else None,
+        "gbif_confidence": int(rec["gbif_confidence"]) if rec.get("gbif_confidence") is not None else None,
+        "date_seen": datetime.now(timezone.utc),
+        "status": str(status),
+    }
+
