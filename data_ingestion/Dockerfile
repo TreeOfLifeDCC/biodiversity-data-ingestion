@@ -7,7 +7,7 @@ ENV LC_ALL=C.UTF-8
 # Copy SDK entrypoint binary from Apache Beam image, which makes it possible to
 # use the image as SDK container image. If you explicitly depend on
 # apache-beam in setup.py, use the same version of Beam in both files.
-COPY --from=apache/beam_python3.12_sdk:2.64.0 /opt/apache/beam /opt/apache/beam
+COPY --from=apache/beam_python3.12_sdk:2.70.0 /opt/apache/beam /opt/apache/beam
 
 # Copy Flex Template launcher binary from the launcher image, which makes it
 # possible to use the image as a Flex Template base image.
