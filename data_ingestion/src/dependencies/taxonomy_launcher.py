@@ -18,6 +18,7 @@ def run(argv):
     parser.add_argument("--output", required=True)
     parser.add_argument("--bq_table", required=False)
     parser.add_argument("--bq_schema", required=False)
+    parser.add_argument("--bq_gate_table", required=False)
     parser.add_argument("--temp_location", required=False)
 
     args, beam_args = parser.parse_known_args(argv)
