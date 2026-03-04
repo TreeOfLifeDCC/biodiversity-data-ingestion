@@ -1,9 +1,8 @@
 """
 it launches the pipeline by passing its specific command line arguments.
 """
-
-from dependencies.taxonomy_pipeline import taxonomy_pipeline
 import argparse
+from dependencies.taxonomy_pipeline import taxonomy_pipeline
 
 
 def run(argv):
