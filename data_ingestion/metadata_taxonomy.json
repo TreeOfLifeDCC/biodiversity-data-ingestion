@@ -81,6 +81,12 @@
       "regexes": ["^gs:\/\/[^[:space:]]+$"]
     },
     {
+      "name": "bq_gate_table",
+      "label": "BigQuery Gate Table",
+      "helpText": "Fully qualified BigQuery table name (project.dataset.table). Default table: projec.dataset.bp_log_taxonomy. This table is used to gate the pipeline and guarantee only new annotations are passed down the pipelines.",
+      "isOptional": true
+    },
+    {
       "name": "temp_location",
       "label": "GCS Temp Path",
       "helpText": "Temporary GCS path used for staging BQ data",
