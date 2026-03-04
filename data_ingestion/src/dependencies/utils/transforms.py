@@ -31,38 +31,73 @@ class FetchESFn(DoFn):
         self.index = index
         self.page_size = page_size
         self.max_pages = max_pages
+        self.emitted = Metrics.counter(self.__class__, "es_records_emitted")
+        self.pages_fetched = Metrics.counter(self.__class__, "es_pages_fetched")
 
     def setup(self):
         self.es = Elasticsearch(
             hosts=self.host,
-            basic_auth=(self.user, self.password)
+            basic_auth=(self.user, self.password),
+            request_timeout=30,
+            retry_on_timeout=True,
+            max_retries=3,
         )
 
     def process(self, element):
         after = None
-        for _ in range(self.max_pages):
+        page_i = 0
+
+        max_pages = self.max_pages if self.max_pages is not None else 0  # None => fetch all
+
+        def should_continue(i: int) -> bool:
+            return (max_pages <= 0) or (i < max_pages)
+
+        while should_continue(page_i):
             query = {
-                'size': self.page_size,
-                'sort': {'tax_id': 'asc'},
-                'query': {'match': {'annotation_complete': 'Done'}}
+                "size": self.page_size,
+                "sort": {"tax_id": "asc"},
+                "_source": ["tax_id", "annotation.accession", "annotation.species"],
+                "query": {"term": {"annotation_complete": "Done"}},
             }
-            if after:
-                query['search_after'] = after
+            if after is not None:
+                query["search_after"] = after
 
             response = self.es.search(index=self.index, body=query)
-            hits = response.get('hits', {}).get('hits', [])
+            hits = response.get("hits", {}).get("hits", [])
             if not hits:
                 break
 
-            for hit in hits:
-                ann = hit['_source']['annotation'][-1]
-                yield {
-                    'accession': ann['accession'],
-                    'species': ann['species'],
-                    'tax_id': hit['_source']['tax_id']
-                }
+            self.pages_fetched.inc()
 
-            after = hits[-1].get('sort')
+            for hit in hits:
+                src = hit.get("_source", {})
+                ann_list = src.get("annotation") or []
+
+                if not ann_list:
+                    raise ValueError(
+                        f"Elasticsearch document with tax_id={src.get('tax_id')} "
+                        "has empty or missing 'annotation' array while "
+                        "annotation_complete='Done'. This violates index invariants."
+                    )
+
+                # Retrieving the latest annotation.
+                ann = ann_list[-1]
+                accession = ann.get("accession")
+                species = ann.get("species")
+                tax_id = src.get("tax_id")
+
+                self.emitted.inc()
+                yield {"accession": accession, "species": species, "tax_id": tax_id}
+
+            last_sort = hits[-1].get("sort")
+            if last_sort is None:
+                raise RuntimeError(
+                    "Elasticsearch response missing 'sort' values for search_after pagination. "
+                    "Check the query 'sort' clause and ES mapping."
+                )
+
+            after = last_sort
+            page_i += 1
 
 
 class ENATaxonomyFn(DoFn):
