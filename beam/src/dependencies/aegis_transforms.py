@@ -95,16 +95,27 @@ def transform_samples(samples):
     transformed_samples = []
 
     for sample in samples:
-        sample_record = dict(sample)
+        chars = sample.get("characteristics", {})
 
-        sample_record["scientificName"] = extract_scientific_name(sample)
+        def get_char(key):
+            val = chars.get(key, [])
+            return val[0].get("text", "") if val else ""
 
-        # Remove organism field from characteristics if it exists
-        # (we've already extracted what we need)
-        if "characteristics" in sample_record:
-            if "organism" in sample_record["characteristics"]:
-                # Keep characteristics but mark that organism was extracted
-                pass
+        sample_record = {
+            "accession": sample.get("accession", ""),
+            "scientificName": extract_scientific_name(sample),
+            "commonName": get_char("common name"),
+            "habitat": get_char("habitat"),
+            "lifestage": get_char("lifestage"),
+            "sex": get_char("sex"),
+            "organismPart": get_char("organism part"),
+            "lat": get_char("geographic location (latitude)"),
+            "lon": get_char("geographic location (longitude)"),
+            "country": get_char("geographic location (country and/or sea)"),
+            "locality": get_char("geographic location (region and locality)"),
+            "tolid": get_char("tolid"),
+            "trackingSystem": sample.get("project_name", ""),
+        }
 
         transformed_samples.append(sample_record)
 
