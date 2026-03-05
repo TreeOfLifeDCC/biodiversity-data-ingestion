@@ -6,6 +6,7 @@ from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
 from airflow.models import Variable
 from airflow.operators.bash import BashOperator
+from elasticsearch import Elasticsearch
 
 from dependencies.common_functions import start_apache_beam
 from dependencies.trec_project import trec_projects
@@ -24,7 +25,27 @@ def get_trec_metadata(project_tag: str, bucket_name: str) -> None:
     path = base / f"{project_tag}.jsonl"
     with path.open("w") as file:
         for _, record in metadata.items():
-            file.write(f"{json.dumps(record)}\n")
+            file.write(f"{json.dumps(record, default=str)}\n")
+
+
+@task
+def update_data_portal_alias(
+    es_host: str, es_password: str, index_name: str, alias_name: str = "data_portal"
+) -> None:
+    """
+    Point the alias at the new index, removing it from any existing indices.
+    """
+    es = Elasticsearch([es_host], http_auth=("elastic", es_password))
+    if es.indices.exists_alias(name=alias_name):
+        old_indices = es.indices.get_alias(name=alias_name)
+        actions = [
+            {"remove": {"index": old_index, "alias": alias_name}}
+            for old_index in old_indices.keys()
+        ]
+        actions.append({"add": {"index": index_name, "alias": alias_name}})
+        es.indices.update_aliases(body={"actions": actions})
+    else:
+        es.indices.put_alias(index=index_name, name=alias_name)
 
 
 @dag(
@@ -76,30 +97,12 @@ def trec_metadata_ingestion():
         f"-d '{data_portal_mapping}'"
     )
 
-    change_aliases_json = {
-        "actions": [
-            {
-                "add": {
-                    "index": f"{date_prefix}_data_portal",
-                    "alias": "data_portal",
-                }
-            },
-            {
-                "remove": {
-                    "index": f"{yesterday_day_prefix}_data_portal",
-                    "alias": "data_portal",
-                }
-            },
-        ]
-    }
-    change_aliases_command = (
-        f"curl -X POST '{base_url}/_aliases' "
-        f"-H 'Content-Type: application/json' "
-        f"-d '{json.dumps(change_aliases_json)}'"
-    )
-    change_aliases_task = BashOperator(
-        task_id="trec-change-aliases",
-        bash_command=change_aliases_command,
+    change_aliases_task = update_data_portal_alias.override(
+        task_id="trec-change-aliases"
+    )(
+        es_host=host,
+        es_password=password,
+        index_name=f"{date_prefix}_data_portal",
     )
 
     remove_data_portal_index_command = (
