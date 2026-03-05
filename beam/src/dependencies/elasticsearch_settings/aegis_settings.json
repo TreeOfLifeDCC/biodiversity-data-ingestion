@@ -1,0 +1,37 @@
+{
+  "settings": {
+    "max_result_window": "100000",
+    "analysis": {
+      "filter": {
+        "autocomplete_filter": {
+          "token_chars": [
+            "letter",
+            "digit",
+            "whitespace"
+          ],
+          "min_gram": "1",
+          "type": "edge_ngram",
+          "max_gram": "20"
+        }
+      },
+      "normalizer": {
+        "lower_case_normalizer": {
+          "filter": [
+            "lowercase"
+          ],
+          "type": "custom"
+        }
+      },
+      "analyzer": {
+        "autocomplete": {
+          "filter": [
+            "lowercase",
+            "autocomplete_filter"
+          ],
+          "type": "custom",
+          "tokenizer": "standard"
+        }
+      }
+    }
+  }
+}

@@ -2,6 +2,8 @@ import json
 from collections import defaultdict
 from typing import Any
 from time import sleep
+import asyncio
+import aiohttp
 
 import requests
 
@@ -141,6 +143,20 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
         record["project_name"] = project_tag
         samples[sample_id] = record
 
+    if project_tag == "AEGIS":
+        unique_tax_ids = set()
+        for sample in samples.values():
+            tax_id = sample.get("taxId")
+            if tax_id:
+                unique_tax_ids.add(tax_id)
+
+        phylogenies = asyncio.run(fetch_taxonomy_for_samples(unique_tax_ids))
+
+        for sample in samples.values():
+            tax_id = sample.get("taxId")
+            sample["taxonomy"] = phylogenies.get(tax_id, {})
+
+
     return samples
 
 
@@ -197,3 +213,52 @@ def join_metadata_and_data(
                 samples[sample_id].setdefault(records_type, [])
                 samples[sample_id][records_type].extend(data)
                 samples[sample_id]["project_name"] = project_name
+
+
+
+async def fetch_lineage(session, tax_id):
+    url = f"https://www.ebi.ac.uk/ena/taxonomy/rest/tax-id/{tax_id}"
+    async with session.get(url) as response:
+        data = await response.json(content_type=None)
+        lineage_string = data.get("lineage", "")
+        names = [n.strip() for n in lineage_string.split(";") if n.strip()]
+        return tax_id, names
+
+async def fetch_rank(session, name):
+    url = f"https://www.ebi.ac.uk/ena/taxonomy/rest/scientific-name/{name}"
+    async with session.get(url) as response:
+        data = await response.json(content_type=None)
+        if isinstance(data, list) and len(data) > 0:
+            return name, data[0].get("rank", None)
+        return name, None
+
+async def fetch_taxonomy_for_samples(tax_ids):
+    target_ranks = {'kingdom', 'phylum', 'class', 'order', 'family', 'genus'}
+
+    async with aiohttp.ClientSession() as session:
+        lineage_results = await asyncio.gather(
+            *[fetch_lineage(session, tax_id) for tax_id in tax_ids]
+        )
+    lineages = dict(lineage_results)
+
+    all_names = set()
+    for names in lineages.values():
+        all_names.update(names)
+
+    async with aiohttp.ClientSession() as session:
+        rank_results = await asyncio.gather(
+            *[fetch_rank(session, name) for name in all_names]
+        )
+    ranks = dict(rank_results)
+
+    phylogenies = {}
+    for tax_id, names in lineages.items():
+        phylogeny = {}
+        for name in names:
+            rank = ranks.get(name)
+            if rank in target_ranks:
+                phylogeny[rank] = name
+        phylogenies[tax_id] = phylogeny
+
+    return phylogenies
+
