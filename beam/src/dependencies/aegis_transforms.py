@@ -70,25 +70,7 @@ def extract_common_name(sample):
 
 
 def extract_phylogeny(sample):
-    phylogeny = {}
-
-    phylogenetic_ranks = [
-        'kingdom', 'phylum', 'class', 'order',
-        'family', 'genus', 'species'
-    ]
-
-    if "characteristics" not in sample:
-        return phylogeny
-
-    characteristics = sample["characteristics"]
-
-    for rank in phylogenetic_ranks:
-        if rank in characteristics:
-            rank_list = characteristics[rank]
-            if rank_list and len(rank_list) > 0:
-                phylogeny[rank] = rank_list[0].get("text", "")
-
-    return phylogeny
+    return sample.get("taxonomy", {})
 
 
 def transform_samples(samples):
