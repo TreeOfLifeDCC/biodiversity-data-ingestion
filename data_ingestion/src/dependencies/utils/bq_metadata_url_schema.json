@@ -1,4 +1,5 @@
 [
+  {"name": "tax_id", "type": "STRING", "mode": "REQUIRED"},
   {"name": "accession", "type": "STRING", "mode": "REQUIRED"},
   {"name": "Biodiversity_portal", "type": "STRING", "mode": "NULLABLE"},
   {"name": "GTF", "type": "STRING", "mode": "NULLABLE"},
