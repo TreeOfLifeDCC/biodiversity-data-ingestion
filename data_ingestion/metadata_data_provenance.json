@@ -44,27 +44,27 @@
       "helpText": "Name of the index to query in Elasticsearch"
     },
     {
-      "name": "output",
-      "label": "Output File Prefix",
-      "helpText": "GCS or local path prefix for output files"
+      "name": "min_batch_size",
+      "label": "Beam minimum batch size",
+      "helpText": "Controlling the size of the batches Beam produces. Default is 50. Set to 0 to disable batching.",
+      "defaultValue": "50"
     },
     {
-      "name": "page_size",
-      "label": "Page Size",
-      "helpText": "Number of records per Elasticsearch page",
-      "defaultValue": "100"
-    },
-    {
-      "name": "max_pages",
-      "label": "Max Pages",
-      "helpText": "Maximum number of pages to fetch",
-      "defaultValue": "10"
+      "name": "max_batch_size",
+      "label": "Beam maximum batch size",
+      "helpText": "Controlling the size of the batches Beam produces. Default is 200. Set to 0 to disable batching.",
+      "defaultValue": "200"
     },
     {
       "name": "taxonomy_path",
       "label": "Validated Taxonomy Path",
       "helpText": "Path to validated taxonomy JSONL file",
       "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "output",
+      "label": "Output File Prefix",
+      "helpText": "GCS or local path prefix for output files"
     },
     {
       "name": "bq_table",
