@@ -19,6 +19,7 @@ from shapely import wkt
 from shapely.geometry import Point, MultiPoint
 from shapely.ops import transform
 from rasterio.mask import mask
+from typing import Any, Dict, Iterable, List, Optional
 from dependencies.utils.helpers import sanitize_species_name, fetch_spatial_file_to_local, extract_species_name
 
 
@@ -224,6 +225,7 @@ class WriteSpeciesOccurrencesFn(DoFn):
     def process(self, record):
         species = record.get('scientificName')  # Name from ENA
         usage_key = record.get('gbif_usageKey')
+
         safe_name = sanitize_species_name(species)
         filename = f"occ_{safe_name}.jsonl"
         out_path = f"{self.output_dir}/{filename}"
@@ -612,68 +614,122 @@ class EstimateRangeFn(DoFn):
         }]
 
 
-class FetchProvenanceMetadataFn(DoFn):
+class FetchProvenanceByTaxIdBatchFn(DoFn):
     """
-    Apache Beam DoFn to extract data provenance metadata from ElasticSearch.
-    Emits a record for each annotation including:
-      - accession
-      - Biodiversity portal URL
-      - GTF URL (if available)
-      - Ensembl browser URL
+    Taxonomy-driven provenance fetch from ES.
+
+    Input: List[{"tax_id", "accession", "gbif_usageKey"}]
+    Output: dict rows with:
+      tax_id, accession, Biodiversity_portal, GTF, Ensembl_browser, gbif_url
+    Behavior:
+      - Query ES using terms query on tax_id (batched).
+      - Use latest annotation: annotation[-1]
+      - Drop tax_ids not returned by ES (emit only for hits).
     """
 
-    def __init__(self, host, user, password, index, page_size=100, max_pages=10):
+    def __init__(
+        self,
+        host: str,
+        user: str,
+        password: str,
+        index: str,
+    ):
         self.host = host
         self.user = user
         self.password = password
         self.index = index
-        self.page_size = page_size
-        self.max_pages = max_pages
+
+        self.es_batches = Metrics.counter(self.__class__, "es_batches")
+        self.es_hits = Metrics.counter(self.__class__, "es_hits")
+        self.es_empty_hits = Metrics.counter(self.__class__, "es_empty_hits")
+        self.bad_tax_id = Metrics.counter(self.__class__, "bad_tax_id")
+        self.missing_annotation = Metrics.counter(self.__class__, "missing_annotation")
+
+    @staticmethod
+    def _normalize_tax_id_str(tax_id: Any) -> Optional[str]:
+        if tax_id is None:
+            return None
+        return str(tax_id)
 
     def setup(self):
         self.es = Elasticsearch(
             hosts=self.host,
-            basic_auth=(self.user, self.password)
+            basic_auth=(self.user, self.password),
+            request_timeout=30,
+            retry_on_timeout=True,
+            max_retries=3,
         )
-        self.seen_accessions = set()  # Deduplication tracker (per worker)
 
-    def process(self, unused_element):
-        after = None
-        for _ in range(self.max_pages):
-            query = {
-                'size': self.page_size,
-                'sort': {'tax_id': 'asc'},
-                'query': {'match': {'annotation_complete': 'Done'}}
+    def process(self, batch: List[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
+        if not batch:
+            return
+
+        # Map taxonomy request by normalized tax_id for merge
+        req_by_tax_id: Dict[str, Dict[str, Any]] = {}
+        tax_ids: List[Any] = []
+
+        for req in batch:
+            tax_id_raw = req.get("tax_id")
+            tax_id_norm = self._normalize_tax_id_str(tax_id_raw)
+            if not tax_id_norm:
+                self.bad_tax_id.inc()
+                continue
+            req_by_tax_id[tax_id_norm] = req
+            tax_ids.append(tax_id_raw)
+
+        if not tax_ids:
+            return
+
+        es_query = {"terms": {"tax_id": tax_ids}}
+        source_fields = [
+            "tax_id",
+            "annotation.accession",
+            "annotation.annotation.GTF",
+            "annotation.view_in_browser",
+        ]
+
+        self.es_batches.inc()
+        resp = self.es.search(
+            index=self.index,
+            query=es_query,
+            size=len(tax_ids),
+            source=source_fields,
+        )
+
+        hits = resp.get("hits", {}).get("hits", []) or []
+        if not hits:
+            self.es_empty_hits.inc()
+            return
+
+        for hit in hits:
+            self.es_hits.inc()
+            src = hit.get("_source", {}) or {}
+            tax_id_norm = self._normalize_tax_id_str(src.get("tax_id"))
+            if not tax_id_norm:
+                self.bad_tax_id.inc()
+                continue
+
+            req = req_by_tax_id.get(tax_id_norm)
+            if req is None:
+                # Defensive: should not happen if ES indexed correctly
+                continue
+
+            ann_list = src.get("annotation") or []
+            if not ann_list:
+                self.missing_annotation.inc()
+                continue
+
+            latest = ann_list[-1] or {}
+            latest_ann = latest.get("annotation") or {}
+
+            accession = req.get("accession") or latest.get("accession")
+            gbif_key = req.get("gbif_usageKey")
+
+            yield {
+                "tax_id": str(req.get("tax_id")),
+                "accession": accession,
+                "Biodiversity_portal": f"https://www.ebi.ac.uk/biodiversity/data_portal/{tax_id_norm}",
+                "GTF": latest_ann.get("GTF"),
+                "Ensembl_browser": latest.get("view_in_browser"),
+                "gbif_url": f"https://www.gbif.org/species/{gbif_key}" if gbif_key else None,
             }
-
-            if after:
-                query['search_after'] = after
-
-            try:
-                response = self.es.search(index=self.index, body=query)
-            except Exception as e:
-                yield {'error': f'Failed to query Elasticsearch: {str(e)}'}
-                break
-
-            hits = response.get('hits', {}).get('hits', [])
-            if not hits:
-                break
-
-            for record in hits:
-                tax_id = record['_source'].get('tax_id')
-                annotations = record['_source'].get('annotation', [])
-
-                for annotation in annotations:
-                    accession = annotation.get("accession")
-                    if accession in self.seen_accessions:
-                        continue
-                    self.seen_accessions.add(accession)
-
-                    yield {
-                        "accession": annotation.get("accession"),
-                        "Biodiversity_portal": f"https://www.ebi.ac.uk/biodiversity/data_portal/{tax_id}",
-                        "GTF": annotation.get("annotation", {}).get("GTF", "no_gtf"),
-                        "Ensembl_browser": annotation.get("view_in_browser")
-                    }
-
-            after = hits[-1].get('sort')
