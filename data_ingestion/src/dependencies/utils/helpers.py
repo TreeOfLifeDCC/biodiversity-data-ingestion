@@ -27,6 +27,7 @@ def extract_species_name(file_path: str) -> str:
     match = re.search(r'occ_(.+?)\.jsonl$', file_path)
     return match.group(1).replace('_', ' ') if match else "Unknown species"
 
+
 def write_species_file(kv, output_dir):
     """
     Writes JSONL records for a single species to a file in the output directory.
@@ -75,7 +76,6 @@ def convert_dict_to_table_schema(schema_dict_list):
     return schema
 
 
-
 def fetch_spatial_file_to_local(shapefile_path: str, local_dir: str) -> str:
     """
     Downloads all files associated with a shapefile (e.g. .shp, .shx, .dbf) from GCS or local FS into a temp directory.
@@ -93,7 +93,7 @@ def fetch_spatial_file_to_local(shapefile_path: str, local_dir: str) -> str:
         file_name = os.path.basename(metadata.path)
         dest_path = os.path.join(local_dir, file_name)
         # Guard against IsDirectoryError. Listed when using gs:// paths
-        if dest_path == local_dir:
+        if dest_path != local_dir:
             continue
         with FileSystems.open(metadata.path) as file_surce:
             with open(dest_path, "wb") as file_dest:
@@ -101,24 +101,19 @@ def fetch_spatial_file_to_local(shapefile_path: str, local_dir: str) -> str:
 
     return os.path.join(local_dir, shp_name)
 
-
-def merge_gbif_url(kv):
-    accession, groups = kv
-    provenance_records = groups.get("provenance", [])
-    taxonomy_records = groups.get("taxonomy", [])
-
-    if not provenance_records:
-        return
-
-    gbif_key = None
-    if taxonomy_records:
-        gbif_key = taxonomy_records[0].get("gbif_usageKey")
-
-    gbif_url = f"https://www.gbif.org/species/{gbif_key}" if gbif_key else None
-
-    for record in provenance_records:
-        record["gbif_url"] = gbif_url
-        yield record
+# -----------------------------------
+# Helpers for data provenance
+# -----------------------------------
+def to_provenance_request(rec: dict) -> dict:
+    """
+    Minimal taxonomy-driven provenance request.
+    Keeps only fields required to fetch/compose provenance output.
+    """
+    return {
+        "tax_id": rec.get("tax_id"),
+        "accession": rec.get("accession"),
+        "gbif_usageKey": rec.get("gbif_usageKey"),
+    }
 
 # -----------------------------------
 # Helpers for the Bigquery gate table
@@ -149,6 +144,7 @@ def to_kv_tax_id(rec) -> tuple:
         with the BigQuery gate table.
         """
     return (str(rec["tax_id"]), rec)
+
 
 def to_kv_existing_tax_id(row) -> tuple:
     """
@@ -274,4 +270,3 @@ def to_gate_row(rec: dict, status: str) -> dict:
         "date_seen": datetime.now(timezone.utc),
         "status": str(status),
     }
-
