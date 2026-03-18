@@ -220,10 +220,41 @@ def load_centroid_list(shapefile_path):
 
 def select_best_record(records):
     """
-    Given a list of occurrence records (same lat/lon), return the one with
-    the lowest coordinateUncertaintyInMeters.
+    Return the occurrence record with the lowest coordinate uncertainty as a proxy for best record.
+
+    Given a list of occurrence records sharing the same coordinates,
+    selects the record with the minimum `coordinateUncertaintyInMeters`.
+
+    Parameters
+    ----------
+    records : list[dict]
+        List of occurrence records (same lat/lon).
+
+    Returns
+    -------
+    dict
+        Record with the lowest coordinate uncertainty.
+
+    Raises
+    ------
+    ValueError
+        If any record contains an invalid or non-numeric
+        `coordinateUncertaintyInMeters`.
+
+    Notes
+    -----
+    - Assumes all records have already passed upstream validation in
+      `filter_high_uncertainty`.
+    - This function enforces that contract and will fail if it is violated.
+    - Designed to be used after GroupByKey in the cleaning pipeline.
     """
-    return min(
-        records,
-        key=lambda r: float(r['coordinateUncertaintyInMeters'])
-    )
+    try:
+        return min(
+            records,
+            key=lambda r: float(r["coordinateUncertaintyInMeters"])
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            "select_best_record received invalid "
+            "coordinateUncertaintyInMeters after upstream validation"
+        ) from exc
