@@ -43,7 +43,7 @@ def write_species_file(kv, output_dir):
 
 def merge_annotations(inputs):
     """
-    Merges climate and biogeo annorations keyed by occurrenceID into a single pcollection.
+    Merges climate and biogeo annotations keyed by occurrenceID into a single pcollection.
     :param inputs: mapped pcollection using occurrenceID
     :return:
     """
