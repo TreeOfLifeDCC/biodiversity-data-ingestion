@@ -1,6 +1,5 @@
 import argparse
 import json
-import random
 
 import apache_beam as beam
 from apache_beam.io.filesystems import FileSystems
