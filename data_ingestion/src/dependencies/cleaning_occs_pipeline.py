@@ -92,7 +92,7 @@ def cleaning_occs_pipeline(args, beam_args):
             )
 
         # Write to BigQuery
-        if args.bq_table and args.temp_location:
+        if args.bq_table and args.temp_location and args.bq_schema:
             _ = (
                     cleaned
                     | 'PrepareBQRows' >> beam.Map(lambda kv: kv[1])
