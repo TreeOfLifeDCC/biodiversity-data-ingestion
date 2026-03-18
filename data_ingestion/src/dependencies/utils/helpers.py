@@ -78,28 +78,78 @@ def convert_dict_to_table_schema(schema_dict_list):
 
 def fetch_spatial_file_to_local(shapefile_path: str, local_dir: str) -> str:
     """
-    Downloads all files associated with a shapefile (e.g. .shp, .shx, .dbf) from GCS or local FS into a temp directory.
-    Returns the local path to the .shp file.
-    """
-    base_dir = shapefile_path.rsplit("/", 1)[0]
-    shp_name = shapefile_path.split("/")[-1]
+    Copy a shapefile and its required sidecar files from Beam FileSystems
+    (local filesystem or gs://) into a local directory, and return the
+    local path to the .shp file.
 
-    if not os.path.exists(local_dir):
-        os.makedirs(local_dir)
+    Expected input:
+        /path/to/ne_10m_land.shp
+        gs://bucket/path/ne_10m_land/ne_10m_land.shp
+    """
+    if not shapefile_path.lower().endswith(".shp"):
+        raise ValueError(
+            f"Expected a .shp path, got: {shapefile_path}"
+        )
+
+    os.makedirs(local_dir, exist_ok=True)
+
+    base_dir = os.path.dirname(shapefile_path.rstrip("/"))
+    shp_name = os.path.basename(shapefile_path)
+    stem, _ = os.path.splitext(shp_name)
+
+    # Shapefile components commonly needed by geopandas/pyogrio
+    allowed_exts = {".shp", ".shx", ".dbf", ".prj", ".cpg", ".qix", ".fix"}
 
     match_result = FileSystems.match([f"{base_dir}/*"])[0]
     metadata_list = match_result.metadata_list
-    for metadata in metadata_list:
-        file_name = os.path.basename(metadata.path)
-        dest_path = os.path.join(local_dir, file_name)
-        # Guard against IsDirectoryError. Listed when using gs:// paths
-        if dest_path != local_dir:
-            continue
-        with FileSystems.open(metadata.path) as file_surce:
-            with open(dest_path, "wb") as file_dest:
-                file_dest.write(file_surce.read())
 
-    return os.path.join(local_dir, shp_name)
+    copied = []
+
+    for metadata in metadata_list:
+        src_path = metadata.path
+
+        # Skip directory-like placeholders, which may appear in gs:// listings
+        if src_path.endswith("/"):
+            continue
+
+        file_name = os.path.basename(src_path)
+        if not file_name:
+            continue
+
+        src_stem, src_ext = os.path.splitext(file_name)
+
+        # Copy only files belonging to the requested shapefile
+        if src_stem != stem:
+            continue
+        if src_ext.lower() not in allowed_exts:
+            continue
+
+        dest_path = os.path.join(local_dir, file_name)
+
+        with FileSystems.open(src_path) as file_source:
+            with open(dest_path, "wb") as file_dest:
+                file_dest.write(file_source.read())
+
+        copied.append(dest_path)
+
+    local_shp_path = os.path.join(local_dir, shp_name)
+
+    required = [
+        os.path.join(local_dir, f"{stem}.shp"),
+        os.path.join(local_dir, f"{stem}.shx"),
+        os.path.join(local_dir, f"{stem}.dbf"),
+    ]
+    missing = [p for p in required if not os.path.exists(p)]
+
+    if missing:
+        raise FileNotFoundError(
+            f"Missing shapefile components after copy: {missing}. "
+            f"Source path: {shapefile_path}. "
+            f"Copied files: {copied}"
+        )
+
+    return local_shp_path
+
 
 # -----------------------------------
 # Helpers for data provenance
