@@ -72,10 +72,7 @@ def cleaning_occs_pipeline(args, beam_args):
         # Write cleaned output per species
         _ = (
                 cleaned
-                | 'AddShardedKey' >> beam.Map(lambda kv: ((kv[0], random.randint(0, args.shards - 1)), kv[1]))
-                | 'GroupByShardedKey' >> beam.GroupByKey()
-                | 'ReshuffleBalanceLoad' >> beam.Reshuffle()
-                | 'DropShardKey' >> beam.FlatMap(lambda kv: [(kv[0][0], record) for record in kv[1]])
+                # TODO: Consider add sharding and reshuffle to avoid hot keys if data volume and skeweness increase.
                 | 'GroupBySpecies' >> beam.GroupByKey()
                 | 'WritePerSpecies' >> beam.ParDo(lambda kv: write_species_file(kv, args.output_dir))
         )
