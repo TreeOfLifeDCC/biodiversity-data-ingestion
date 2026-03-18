@@ -154,9 +154,31 @@ def filter_centroid(record, centroids, max_dist=5000):
 
 def load_land_gdf(shapefile_path):
     """
-    Load the continental land shapefile into a GeoDataFrame object, using GCS-aware local copying.
-    :param path:
-    :return: GeoDataFrame with sindex
+    Load a land polygon shapefile into a GeoDataFrame with a spatial index.
+
+    The input path can be either a local filesystem path or a GCS path (gs://).
+    The shapefile and its associated files (.shp, .shx, .dbf, etc.)
+    are first copied to a local temporary directory using Beam FileSystems,
+    then read into memory with GeoPandas.
+
+    A spatial index (sindex) is built to support efficient point-in-polygon
+    queries during filtering (e.g. filtering occurrences over sea).
+
+    Parameters
+    ----------
+    shapefile_path : str
+        Path to the .shp file (local or gs://).
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        GeoDataFrame containing land polygons, with a built spatial index.
+
+    Notes
+    -----
+    - The shapefile is expected to use EPSG:4326 coordinates.
+    - Data is materialised locally under /tmp/land_shapefile on the worker.
+    - This function is typically used as a Beam side input.
     """
     local_path = fetch_spatial_file_to_local(shapefile_path, "/tmp/land_shapefile")
     gdf = gpd.read_file(local_path)
@@ -165,11 +187,32 @@ def load_land_gdf(shapefile_path):
 
 
 def load_centroid_list(shapefile_path):
-    """
-    Loads the centroid shapefile,using GCS-aware local copying.
-    :param path:
-    :return: a list of (lat, lon) tuples with centroid coordinates.
-    """
+    """ Load administrative centroid coordinates from a shapefile into memory.
+
+    The input path can be either a local filesystem path or a GCS path (gs://).
+    The shapefile and its associated files (.shp, .shx, .dbf, etc.)
+    are first copied to a local temporary directory using Beam FileSystems,
+    then read into memory with GeoPandas.
+
+    The centroids are extracted as (latitude, longitude) tuples and returned
+    as a list for use in distance-based filtering (e.g. removing records near
+    administrative centroids).
+
+    Parameters
+    ----------
+    shapefile_path : str
+        Path to the .shp file (local or gs://).
+
+    Returns
+    -------
+    list[tuple[float, float]]
+        List of centroid coordinates as (lat, lon) tuples.
+
+    Notes
+    -----
+    - The shapefile is expected to contain point geometries in EPSG:4326.
+    - Data is materialised locally under /tmp/centroid_shapefile on the worker.
+    - This function is typically used as a Beam side input."""
     local_path = fetch_spatial_file_to_local(shapefile_path, "/tmp/centroid_shapefile")
     gdf = gpd.read_file(local_path)
     return list(zip(gdf.geometry.y, gdf.geometry.x))
