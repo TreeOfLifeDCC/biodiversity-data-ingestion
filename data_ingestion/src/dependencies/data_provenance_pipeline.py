@@ -64,7 +64,7 @@ def data_provenance_pipeline(args, beam_args):
                     method="FILE_LOADS",
                     custom_gcs_temp_location=args.temp_location,
                     write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-                    create_disposition=beam.io.BigQueryDisposition.CREATE_NEVER,  # table exists
+                    create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
                 )
             )
 
