@@ -466,9 +466,9 @@ class AnnotateWithCHELSAFn(DoFn):
 
     def process(self, record):
         record_id = (
-            record.get("gbifID")
-            or record.get("occurrenceID")
-            or record.get("accession")
+                record.get("gbifID")
+                or record.get("occurrenceID")
+                or record.get("accession")
         )
 
         if "uncertainty_geom_wkt" not in record:
@@ -497,17 +497,16 @@ class AnnotateWithCHELSAFn(DoFn):
         for var, dataset in self.layers.items():
             try:
                 # Mask the raster to the uncertainty polygon and crop to the
-                # intersecting window. This preserves the intended scientific
-                # meaning: summarising climate across the plausible area of the
-                # occurrence, not sampling only the nominal point.
-                clipped, _ = mask(dataset, geojson_geom, crop=True, filled=True)
+                # intersecting window. Use filled=False so rasterio returns a
+                # masked array instead of inserting fill values into excluded cells.
+                # This avoids incorrectly dropping valid CHELSA values such as 0.
+                clipped, _ = mask(dataset, geojson_geom, crop=True, filled=False)
                 arr = clipped[0]
 
-                if dataset.nodata is not None:
-                    arr = arr[arr != dataset.nodata]
+                # Keep only unmasked cells from the clipped raster.
+                arr = arr.compressed()
 
-                # Remove known sentinel values and NaNs before aggregation.
-                arr = arr[~np.isin(arr, [65535, 0, -32768])]
+                # Drop NaNs if any remain after compression.
                 arr = arr[~np.isnan(arr)]
 
                 if arr.size == 0:
@@ -516,9 +515,7 @@ class AnnotateWithCHELSAFn(DoFn):
 
                 mean_val = np.mean(arr)
 
-                # CHELSA variables use different scaling by variable type.
-                # From Climatologies at High resolution for the Earth Land Surface Areas
-                # CHELSA V2.1: Technical specification Release Date: 24. 05. 2021 Document version: 1.3
+                # CHELSA variables use different encodings by variable type.
                 # Apply the appropriate conversion back to interpretable units.
                 if var in self.temp_vars:
                     climate_values[var] = round(mean_val * 0.1 - 273.15, 2)
