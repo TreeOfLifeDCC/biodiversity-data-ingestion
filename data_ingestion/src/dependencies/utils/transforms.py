@@ -1,11 +1,10 @@
+import logging
 import tempfile
-
 import geopandas as gpd
 import json
 import os
 import numpy as np
 import pyproj
-import sys
 import rasterio
 import time
 
@@ -21,6 +20,8 @@ from shapely.ops import transform
 from rasterio.mask import mask
 from typing import Any, Dict, Iterable, List, Optional
 from dependencies.utils.helpers import sanitize_species_name, fetch_spatial_file_to_local, extract_species_name
+
+logger = logging.getLogger(__name__)
 
 
 class FetchESFn(DoFn):
@@ -282,37 +283,100 @@ class WriteSpeciesOccurrencesFn(DoFn):
 
 
 class GenerateUncertaintyAreaFn(DoFn):
+    """
+    Generate a buffer polygon around each occurrence point based on
+    coordinate uncertainty, and store it as WKT in `uncertainty_geom_wkt`.
+    Uses local AEQD projection to compute accurate metric buffers around points.
+
+    Records with missing or invalid coordinates / uncertainty are skipped.
+    """
+
+    def __init__(self, min_radius_m=100.0):
+        self.min_radius_m = min_radius_m
+        self.missing_fields = Metrics.counter(self.__class__, "missing_fields")
+        self.invalid_numeric = Metrics.counter(self.__class__, "invalid_numeric")
+        self.generated_buffers = Metrics.counter(self.__class__, "generated_buffers")
+
     def process(self, record):
         lat = record.get("decimalLatitude")
         lon = record.get("decimalLongitude")
         radius = record.get("coordinateUncertaintyInMeters")
 
+        record_id = record.get("gbifID") or record.get("occurrenceID") or record.get("accession")
+
         if lat is None or lon is None or radius in (None, "", "NaN"):
-            print(f"[WARN] Skipping record with missing coordinates or uncertainty: {record}", file=sys.stderr)
+            self.missing_fields.inc()
+            logger.warning(
+                "Skipping record with missing coordinates or uncertainty. record_id=%s",
+                record_id,
+            )
             return
 
         try:
             lat = float(lat)
             lon = float(lon)
-            radius = max(float(radius), 100.0)  # Clamp to minimum 100 to avoid point geometries and empty masks.
+            radius = max(float(radius), self.min_radius_m)
         except (TypeError, ValueError):
-            print(f"[WARN] Invalid numeric values in record: {record}", file=sys.stderr)
+            self.invalid_numeric.inc()
+            logger.warning(
+                "Skipping record with invalid numeric coordinate/uncertainty values. "
+                "record_id=%s lat=%r lon=%r radius=%r",
+                record_id,
+                lat,
+                lon,
+                radius,
+            )
             return
 
-        # Define AEQD projection centered on the point
-        aeqd_proj = pyproj.Proj(proj='aeqd', lat_0=lat, lon_0=lon, datum='WGS84')
-        wgs84_proj = pyproj.Proj(proj='latlong', datum='WGS84')
+        # ---------------------------------------------------------------------
+        # Projection strategy:
+        #
+        # We cannot buffer directly in WGS84 (lat/lon) because:
+        # - units are in degrees, not meters
+        # - distances are not uniform across the globe
+        #
+        # Instead:
+        # 1. Reproject the point to a local Azimuthal Equidistant projection (AEQD)
+        #    centered on the point itself.
+        #    → This preserves distances from the center point.
+        #
+        # 2. Perform the buffer in meters in this projected space.
+        #
+        # 3. Reproject the buffered geometry back to WGS84.
+        # ---------------------------------------------------------------------
 
-        project_to_aeqd = pyproj.Transformer.from_proj(wgs84_proj, aeqd_proj, always_xy=True).transform
-        project_to_wgs84 = pyproj.Transformer.from_proj(aeqd_proj, wgs84_proj, always_xy=True).transform
+        # Define local Azimuthal Equidistant projection centered at the point
+        aeqd_proj = pyproj.Proj(proj="aeqd", lat_0=lat, lon_0=lon, datum="WGS84")
 
+        # Define WGS84 geographic CRS
+        wgs84_proj = pyproj.Proj(proj="latlong", datum="WGS84")
+
+        # Transformer: WGS84 → AEQD (for metric buffering)
+        project_to_aeqd = pyproj.Transformer.from_proj(
+            wgs84_proj, aeqd_proj, always_xy=True
+        ).transform
+
+        # Transformer: AEQD → WGS84 (back to geographic coordinates)
+        project_to_wgs84 = pyproj.Transformer.from_proj(
+            aeqd_proj, wgs84_proj, always_xy=True
+        ).transform
+
+        # Create point in WGS84 (lon, lat order!)
         point_wgs84 = Point(lon, lat)
+
+        # Project point to AEQD (meters)
         point_aeqd = transform(project_to_aeqd, point_wgs84)
+
+        # Project point to AEQD (meters)
         buffer_aeqd = point_aeqd.buffer(radius)
+
+        # Reproject buffer back to WGS84
         buffer_wgs84 = transform(project_to_wgs84, buffer_aeqd)
 
         updated = record.copy()
         updated["uncertainty_geom_wkt"] = buffer_wgs84.wkt
+
+        self.generated_buffers.inc()
         yield updated
 
 
