@@ -6,7 +6,7 @@ from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.io.fileio import MatchFiles
 from apache_beam.io.gcp.bigquery import WriteToBigQuery, BigQueryDisposition
 from apache_beam.io.gcp.bigquery_tools import parse_table_schema_from_json
-from dependencies.utils.helpers import merge_annotations
+from dependencies.utils.helpers import merge_annotations, merge_summary_annotations
 from dependencies.utils.transforms import (
     GenerateUncertaintyAreaFn,
     AnnotateWithCHELSAFn,
@@ -98,10 +98,9 @@ def spatial_annotation_pipeline(args, beam_args):
         joined_summ = (
             {"climate": climate_summary, "biogeo": biogeo_summary}
             | "JoinSummariesByAccession" >> beam.CoGroupByKey()
-            | "MergeSummaries" >> beam.Map(lambda kv: {  # Unpacking annotation values
-                **kv[1].get("climate", [{}])[0],
-                **kv[1].get("biogeo", [{}])[0]
-            })
+            | "MergeSummaries" >> beam.MapTuple(
+                lambda accession, grouped: merge_summary_annotations(grouped)
+            )
         )
 
         _ = (

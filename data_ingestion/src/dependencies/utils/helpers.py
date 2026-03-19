@@ -55,6 +55,17 @@ def merge_annotations(inputs):
     return merged
 
 
+def merge_summary_annotations(grouped):
+    """
+    Merge climate and biogeographic summary annotations for one accession.
+
+    CoGroupByKey returns lists per source. If one source has no match, the
+    corresponding value is an empty list, so we default to an empty dict.
+    """
+    climate = (grouped.get("climate") or [{}])[0]
+    biogeo = (grouped.get("biogeo") or [{}])[0]
+    return {**climate, **biogeo}
+
 def convert_dict_to_table_schema(schema_dict_list):
     """
     Converts a list of schema dicts (from JSON) into a Beam-compatible TableSchema.
