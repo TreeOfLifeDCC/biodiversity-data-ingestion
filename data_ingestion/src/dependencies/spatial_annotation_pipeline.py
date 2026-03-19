@@ -75,7 +75,7 @@ def spatial_annotation_pipeline(args, beam_args):
             | "WriteAnnotated" >> beam.io.WriteToText(
                 file_path_prefix=args.annotated_output,
                 file_name_suffix=".jsonl",
-                num_shards=1
+                shard_name_template=""
             )
         )
 
@@ -108,12 +108,12 @@ def spatial_annotation_pipeline(args, beam_args):
             | "WriteJoinedSumm" >> beam.io.WriteToText(
                 file_path_prefix=args.summary_output,
                 file_name_suffix=".jsonl",
-                num_shards=1
+                shard_name_template=""
             )
         )
 
         # Saving to BQ
-        if args.bq_summary_table and args.temp_location:
+        if args.bq_summary_table and args.temp_location and args.bq_schema:
             (
              joined_summ
              | "WriteSummaryToBigQuery" >> WriteToBigQuery(
