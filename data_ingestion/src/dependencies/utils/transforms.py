@@ -381,90 +381,162 @@ class GenerateUncertaintyAreaFn(DoFn):
 
 
 class AnnotateWithCHELSAFn(DoFn):
+    """
+    Annotate occurrence records with CHELSA climate variables derived from the
+    uncertainty area around each occurrence.
+
+    For each record, this transform:
+      1. Reads the uncertainty polygon from `uncertainty_geom_wkt`
+      2. Masks each CHELSA raster to that polygon
+      3. Computes the mean raster value within the polygon
+      4. Applies CHELSA unit conversions where needed
+
+    Notes
+    -----
+    - Climate summaries are computed over the area of uncertainty, not at a
+      single point location.
+    - The input climate directory can be local or gs:// because files are
+      discovered and copied with Beam FileSystems.
+    """
+
     def __init__(self, climate_dir, output_key="clim_dataset"):
         self.output_key = output_key
         self.gcs_climate_dir = climate_dir
+        self.layers = {}
 
         self.temp_vars = {
-            'bio1', 'bio5', 'bio6', 'bio8', 'bio9', 'bio10', 'bio11'
+            "bio1", "bio5", "bio6", "bio8", "bio9", "bio10", "bio11"
         }
         self.precip_vars = {
-            'bio12', 'bio13', 'bio14', 'bio16', 'bio17', 'bio18', 'bio19'
+            "bio12", "bio13", "bio14", "bio16", "bio17", "bio18", "bio19"
         }
         self.raw_vars = {
-            'bio2', 'bio3', 'bio4', 'bio7', 'bio15'
+            "bio2", "bio3", "bio4", "bio7", "bio15"
         }
 
+        self.records_missing_geom = Metrics.counter(
+            self.__class__, "records_missing_uncertainty_geom"
+        )
+        self.records_invalid_geom = Metrics.counter(
+            self.__class__, "records_invalid_uncertainty_geom"
+        )
+        self.raster_mask_failures = Metrics.counter(
+            self.__class__, "raster_mask_failures"
+        )
+        self.records_annotated = Metrics.counter(
+            self.__class__, "records_annotated"
+        )
+
     def setup(self):
-        # Create a temporary directory on the worker
+        # Create a temporary local directory on the worker and copy raster files
+        # there once. This avoids reopening files from remote storage per record.
         self.temp_dir = tempfile.mkdtemp()
         self.climate_dir = self.temp_dir
 
-        # Match all climate files in GCS
-        gcs_pattern = os.path.join(self.gcs_climate_dir.rstrip('/'), '*.tif')
-        match_result = FileSystems.match([gcs_pattern])[0]
+        # Match all climate rasters from the provided directory (local or gs://).
+        pattern = os.path.join(self.gcs_climate_dir.rstrip("/"), "*.tif")
+        match_result = FileSystems.match([pattern])[0]
         metadata_list = match_result.metadata_list
 
-        # Download each file to the temp directory
+        # Copy each raster to the worker-local temp directory.
         for metadata in metadata_list:
-            gcs_file_path = metadata.path
-            filename = os.path.basename(gcs_file_path)
-
+            src_path = metadata.path
+            filename = os.path.basename(src_path)
             local_path = os.path.join(self.temp_dir, filename)
 
-            with FileSystems.open(metadata.path) as gcs_file:
-                with open(local_path, 'wb') as local_file:
-                    local_file.write(gcs_file.read())
+            with FileSystems.open(src_path) as src_file:
+                with open(local_path, "wb") as dst_file:
+                    dst_file.write(src_file.read())
 
-        # Checking CRS
-        self.layers = {}
-        for file in os.listdir(self.climate_dir):
-            if file.endswith(".tif"):
-                var_name = file.split("_")[1]
-                path = os.path.join(self.climate_dir, file)
-                dataset = rasterio.open(path)
-                if dataset.crs.to_string() != "EPSG:4326":
-                    raise ValueError(f"{file} must use EPSG:4326 CRS")
-                self.layers[var_name] = dataset
+        # Open raster datasets once per worker.
+        # These stay available during processing and are released in teardown().
+        for file_name in os.listdir(self.climate_dir):
+            if not file_name.endswith(".tif"):
+                continue
+
+            var_name = file_name.split("_")[1]
+            path = os.path.join(self.climate_dir, file_name)
+            dataset = rasterio.open(path)
+
+            if dataset.crs.to_string() != "EPSG:4326":
+                dataset.close()
+                raise ValueError(f"{file_name} must use EPSG:4326 CRS")
+
+            self.layers[var_name] = dataset
 
     def process(self, record):
+        record_id = (
+            record.get("gbifID")
+            or record.get("occurrenceID")
+            or record.get("accession")
+        )
+
         if "uncertainty_geom_wkt" not in record:
+            self.records_missing_geom.inc()
+            logger.warning(
+                "Skipping climate annotation: missing uncertainty_geom_wkt. record_id=%s",
+                record_id,
+            )
             return
 
         try:
             polygon = wkt.loads(record["uncertainty_geom_wkt"])
-            geojson_geom = [json.loads(json.dumps(polygon.__geo_interface__))]
-        except Exception:
+            geojson_geom = [polygon.__geo_interface__]
+        except Exception as exc:
+            self.records_invalid_geom.inc()
+            logger.warning(
+                "Skipping climate annotation: invalid uncertainty geometry. "
+                "record_id=%s error=%s",
+                record_id,
+                exc,
+            )
             return
 
         climate_values = {}
 
         for var, dataset in self.layers.items():
             try:
+                # Mask the raster to the uncertainty polygon and crop to the
+                # intersecting window. This preserves the intended scientific
+                # meaning: summarising climate across the plausible area of the
+                # occurrence, not sampling only the nominal point.
                 clipped, _ = mask(dataset, geojson_geom, crop=True, filled=True)
                 arr = clipped[0]
 
                 if dataset.nodata is not None:
                     arr = arr[arr != dataset.nodata]
 
+                # Remove known sentinel values and NaNs before aggregation.
                 arr = arr[~np.isin(arr, [65535, 0, -32768])]
                 arr = arr[~np.isnan(arr)]
 
-                if arr.size > 0:
-                    mean_val = np.mean(arr)
-
-                    if var in self.temp_vars:
-                        climate_values[var] = round(mean_val * 0.1 - 273.15, 2)
-                    elif var in self.precip_vars:
-                        climate_values[var] = round(mean_val * 0.1)
-                    elif var in self.raw_vars:
-                        climate_values[var] = round(float(mean_val), 2)
-                    else:
-                        climate_values[var] = round(float(mean_val), 2)
-                else:
+                if arr.size == 0:
                     climate_values[var] = None
+                    continue
 
-            except Exception:
+                mean_val = np.mean(arr)
+
+                # CHELSA variables use different scaling by variable type.
+                # From Climatologies at High resolution for the Earth Land Surface Areas
+                # CHELSA V2.1: Technical specification Release Date: 24. 05. 2021 Document version: 1.3
+                # Apply the appropriate conversion back to interpretable units.
+                if var in self.temp_vars:
+                    climate_values[var] = round(mean_val * 0.1 - 273.15, 2)
+                elif var in self.precip_vars:
+                    climate_values[var] = round(mean_val * 0.1)
+                elif var in self.raw_vars:
+                    climate_values[var] = round(float(mean_val), 2)
+                else:
+                    climate_values[var] = round(float(mean_val), 2)
+
+            except Exception as exc:
+                self.raster_mask_failures.inc()
+                logger.warning(
+                    "Failed climate masking for variable=%s record_id=%s error=%s",
+                    var,
+                    record_id,
+                    exc,
+                )
                 climate_values[var] = None
 
         output = {
@@ -474,10 +546,25 @@ class AnnotateWithCHELSAFn(DoFn):
             "decimalLatitude": record.get("decimalLatitude"),
             "decimalLongitude": record.get("decimalLongitude"),
             self.output_key: climate_values,
-            "occurrenceID": record.get("occurrenceID")
+            "occurrenceID": record.get("occurrenceID"),
         }
 
+        self.records_annotated.inc()
         yield output
+
+    def teardown(self):
+        # Close open raster datasets explicitly to release GDAL/file handles.
+        for var, dataset in self.layers.items():
+            try:
+                dataset.close()
+            except Exception as exc:
+                logger.warning(
+                    "Failed to close raster dataset for variable=%s error=%s",
+                    var,
+                    exc,
+                )
+
+        self.layers.clear()
 
 
 class ClimateSummaryFn(DoFn):
