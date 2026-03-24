@@ -350,11 +350,13 @@ class WriteSpeciesOccurrencesFn(DoFn):
                         "countryCode": occ.get("countryCode"),
                         "gadm": occ.get("gadm"),
                         "basisOfRecord": occ.get("basisOfRecord"),
+                        'datasetKey': occ.get('datasetKey'),
                         "occurrenceID": occ.get("occurrenceID"),
                         "gbifID": occ.get("gbifID"),
                         "institutionCode": occ.get("institutionCode"),
                         "collectionCode": occ.get("collectionCode"),
                         "catalogNumber": occ.get("catalogNumber"),
+                        'licence': occ.get('licence'),
                         "iucnRedListCategory": occ.get("iucnRedListCategory"),
                     }
                     f.write((json.dumps(occ_out) + "\n").encode("utf-8"))
