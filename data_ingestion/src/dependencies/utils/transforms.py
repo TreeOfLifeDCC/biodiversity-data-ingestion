@@ -210,76 +210,185 @@ class ValidateNamesFn(DoFn):
             yield record
 
 
+# class WriteSpeciesOccurrencesFn(DoFn):
+#     """
+#     For each validated species record, fetches GBIF occurrences and writes to one file per species.
+#     Tracks success, skipped, and failed records using Beam metrics.
+#     """
+#
+#     def __init__(self, output_dir, max_records=150):
+#         self.output_dir = output_dir
+#         self.max_records = max_records
+#
+#     def setup(self):
+#         self.gbif_client = gbif_occ
+#
+#     def process(self, record):
+#         species = record.get('scientificName')  # Name from ENA
+#         usage_key = record.get('gbif_usageKey')
+#
+#         safe_name = sanitize_species_name(species)
+#         filename = f"occ_{safe_name}.jsonl"
+#         out_path = f"{self.output_dir}/{filename}"
+#         tmp_path = out_path + ".tmp"
+#
+#         try:
+#             resp = self.gbif_client.search(
+#                 taxonKey=usage_key,
+#                 basisOfRecord=['PRESERVED_SPECIMEN', 'MATERIAL_SAMPLE'],
+#                 occurrenceStatus='PRESENT',
+#                 hasCoordinate=True,
+#                 hasGeospatialIssue=False,
+#                 limit=self.max_records
+#             )
+#
+#             occurrences = resp.get('results', [])
+#             lines = []
+#
+#             for occ in occurrences:
+#                 occ_out = {
+#                     'accession': record.get('accession'),
+#                     'tax_id': record.get('tax_id'),
+#                     'species': record.get('scientificName'),  # Name from ENA
+#                     'gbif_usageKey': occ.get('taxonKey'),
+#                     'gbif_species': occ.get('species'),  # Name in GBIF.
+#                     'decimalLatitude': occ.get('decimalLatitude'),
+#                     'decimalLongitude': occ.get('decimalLongitude'),
+#                     'coordinateUncertaintyInMeters': occ.get('coordinateUncertaintyInMeters'),
+#                     'geodeticDatum': occ.get('geodeticDatum'),
+#                     'elevation': occ.get('elevation'),
+#                     'eventDate': occ.get('eventDate'),
+#                     'countryCode': occ.get('countryCode'),
+#                     'gadm': occ.get('gadm'),
+#                     'basisOfRecord': occ.get('basisOfRecord'),
+#                     'occurrenceID': occ.get('occurrenceID'),
+#                     'gbifID': occ.get('gbifID'),
+#                     'institutionCode': occ.get('institutionCode'),
+#                     'collectionCode': occ.get('collectionCode'),
+#                     'catalogNumber': occ.get('catalogNumber'),
+#                     'iucnRedListCategory': occ.get('iucnRedListCategory')
+#                 }
+#                 lines.append(json.dumps(occ_out))
+#
+#             with FileSystems.create(tmp_path) as f:
+#                 for line in lines:
+#                     f.write((line + '\n').encode('utf-8'))
+#             FileSystems.rename([tmp_path], [out_path])
+#
+#         except Exception as e:
+#             yield pvalue.TaggedOutput('dead', {
+#                 'species': species,
+#                 'error': str(e)
+#             })
 class WriteSpeciesOccurrencesFn(DoFn):
     """
-    For each validated species record, fetches GBIF occurrences and writes to one file per species.
-    Tracks success, skipped, and failed records using Beam metrics.
+    Fetch GBIF occurrences for one validated species, write them to a JSONL file,
+    and emit one success status record on the main output.
+
+    On failure, emit a tagged "dead" record.
     """
+
+    DEAD = "dead"
 
     def __init__(self, output_dir, max_records=150):
         self.output_dir = output_dir
         self.max_records = max_records
 
+        self.species_processed = Metrics.counter(
+            self.__class__, "species_processed"
+        )
+        self.files_written = Metrics.counter(
+            self.__class__, "files_written"
+        )
+        self.occurrences_written = Metrics.counter(
+            self.__class__, "occurrences_written"
+        )
+        self.species_failed = Metrics.counter(
+            self.__class__, "species_failed"
+        )
+
     def setup(self):
         self.gbif_client = gbif_occ
 
     def process(self, record):
-        species = record.get('scientificName')  # Name from ENA
-        usage_key = record.get('gbif_usageKey')
+        species = record.get("scientificName")
+        usage_key = record.get("gbif_usageKey")
+        accession = record.get("accession")
+        tax_id = record.get("tax_id")
 
         safe_name = sanitize_species_name(species)
         filename = f"occ_{safe_name}.jsonl"
         out_path = f"{self.output_dir}/{filename}"
-        tmp_path = out_path + ".tmp"
+        tmp_path = f"{out_path}.tmp"
 
         try:
             resp = self.gbif_client.search(
                 taxonKey=usage_key,
-                basisOfRecord=['PRESERVED_SPECIMEN', 'MATERIAL_SAMPLE'],
-                occurrenceStatus='PRESENT',
+                basisOfRecord=["PRESERVED_SPECIMEN", "MATERIAL_SAMPLE"],
+                occurrenceStatus="PRESENT",
                 hasCoordinate=True,
                 hasGeospatialIssue=False,
-                limit=self.max_records
+                limit=self.max_records,
             )
 
-            occurrences = resp.get('results', [])
-            lines = []
-
-            for occ in occurrences:
-                occ_out = {
-                    'accession': record.get('accession'),
-                    'tax_id': record.get('tax_id'),
-                    'species': record.get('scientificName'),  # Name from ENA
-                    'gbif_usageKey': occ.get('taxonKey'),
-                    'gbif_species': occ.get('species'),  # Name in GBIF.
-                    'decimalLatitude': occ.get('decimalLatitude'),
-                    'decimalLongitude': occ.get('decimalLongitude'),
-                    'coordinateUncertaintyInMeters': occ.get('coordinateUncertaintyInMeters'),
-                    'geodeticDatum': occ.get('geodeticDatum'),
-                    'elevation': occ.get('elevation'),
-                    'eventDate': occ.get('eventDate'),
-                    'countryCode': occ.get('countryCode'),
-                    'gadm': occ.get('gadm'),
-                    'basisOfRecord': occ.get('basisOfRecord'),
-                    'occurrenceID': occ.get('occurrenceID'),
-                    'gbifID': occ.get('gbifID'),
-                    'institutionCode': occ.get('institutionCode'),
-                    'collectionCode': occ.get('collectionCode'),
-                    'catalogNumber': occ.get('catalogNumber'),
-                    'iucnRedListCategory': occ.get('iucnRedListCategory')
-                }
-                lines.append(json.dumps(occ_out))
+            occurrences = resp.get("results", [])
 
             with FileSystems.create(tmp_path) as f:
-                for line in lines:
-                    f.write((line + '\n').encode('utf-8'))
+                for occ in occurrences:
+                    occ_out = {
+                        "accession": accession,
+                        "tax_id": tax_id,
+                        "species": species,
+                        "gbif_usageKey": occ.get("taxonKey"),
+                        "gbif_species": occ.get("species"),
+                        "decimalLatitude": occ.get("decimalLatitude"),
+                        "decimalLongitude": occ.get("decimalLongitude"),
+                        "coordinateUncertaintyInMeters": occ.get("coordinateUncertaintyInMeters"),
+                        "geodeticDatum": occ.get("geodeticDatum"),
+                        "elevation": occ.get("elevation"),
+                        "eventDate": occ.get("eventDate"),
+                        "countryCode": occ.get("countryCode"),
+                        "gadm": occ.get("gadm"),
+                        "basisOfRecord": occ.get("basisOfRecord"),
+                        "occurrenceID": occ.get("occurrenceID"),
+                        "gbifID": occ.get("gbifID"),
+                        "institutionCode": occ.get("institutionCode"),
+                        "collectionCode": occ.get("collectionCode"),
+                        "catalogNumber": occ.get("catalogNumber"),
+                        "iucnRedListCategory": occ.get("iucnRedListCategory"),
+                    }
+                    f.write((json.dumps(occ_out) + "\n").encode("utf-8"))
+
             FileSystems.rename([tmp_path], [out_path])
 
-        except Exception as e:
-            yield pvalue.TaggedOutput('dead', {
-                'species': species,
-                'error': str(e)
-            })
+            self.species_processed.inc()
+            self.files_written.inc()
+            self.occurrences_written.inc(len(occurrences))
+
+            yield {
+                "accession": accession,
+                "tax_id": tax_id,
+                "species": species,
+                "gbif_usageKey": usage_key,
+                "output_path": out_path,
+                "n_occurrences": len(occurrences),
+                "status": "SUCCESS",
+            }
+
+        except Exception as exc:
+            self.species_failed.inc()
+            yield pvalue.TaggedOutput(
+                self.DEAD,
+                {
+                    "accession": accession,
+                    "tax_id": tax_id,
+                    "species": species,
+                    "gbif_usageKey": usage_key,
+                    "output_path": out_path,
+                    "error": str(exc),
+                    "status": "FAILURE",
+                },
+            )
 
 
 class GenerateUncertaintyAreaFn(DoFn):
