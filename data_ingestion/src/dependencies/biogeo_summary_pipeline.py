@@ -14,7 +14,7 @@ def run(args, beam_args):
             | "ParseJSON" >> beam.Map(json.loads)
             | "KeyBySpecies" >> beam.Map(lambda r: (r["species"], r))
             | "GroupBySpecies" >> beam.GroupByKey()
-            | "SummarizeBiogeoNest" >> beam.ParDo(BiogeoSummaryNestedFn(dict_key=args.dict_key))
+            | "SummarizeBiogeoNest" >> beam.ParDo(BiogeoSummaryNestedFn(output_key=args.dict_key))
             | "WriteSummary" >> beam.io.WriteToText(
                 file_path_prefix=args.output,
                 file_name_suffix=".jsonl",
@@ -28,7 +28,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--input", required=True, help="Path to JSONL file annotated with biogeo regions")
     parser.add_argument("--output", required=True, help="Output prefix for the summary JSONL")
-    parser.add_argument("--dict_key", default="biogeo_Ecoregion", help="Key for nested region data")
+    parser.add_argument("--output_key", default="biogeo_Ecoregion", help="Key for nested region data")
 
     args, beam_args = parser.parse_known_args()
     run(args, beam_args)
