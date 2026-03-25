@@ -69,7 +69,7 @@ def run_summary_pipeline(args, beam_args):
             | 'CountTotal' >> beam.CombinePerKey(sum)
         )
 
-        summary = (
+        _ = (
             {'meta': metadata, 'total': total_counts, 'retained': retained_counts}
             | 'MergeAll' >> beam.CoGroupByKey()
             | 'FormatSummary' >> beam.Map(lambda kv: format_summary(kv[0], kv[1]))
