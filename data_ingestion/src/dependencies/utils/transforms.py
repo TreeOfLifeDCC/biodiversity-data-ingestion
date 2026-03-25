@@ -210,76 +210,6 @@ class ValidateNamesFn(DoFn):
             yield record
 
 
-# class WriteSpeciesOccurrencesFn(DoFn):
-#     """
-#     For each validated species record, fetches GBIF occurrences and writes to one file per species.
-#     Tracks success, skipped, and failed records using Beam metrics.
-#     """
-#
-#     def __init__(self, output_dir, max_records=150):
-#         self.output_dir = output_dir
-#         self.max_records = max_records
-#
-#     def setup(self):
-#         self.gbif_client = gbif_occ
-#
-#     def process(self, record):
-#         species = record.get('scientificName')  # Name from ENA
-#         usage_key = record.get('gbif_usageKey')
-#
-#         safe_name = sanitize_species_name(species)
-#         filename = f"occ_{safe_name}.jsonl"
-#         out_path = f"{self.output_dir}/{filename}"
-#         tmp_path = out_path + ".tmp"
-#
-#         try:
-#             resp = self.gbif_client.search(
-#                 taxonKey=usage_key,
-#                 basisOfRecord=['PRESERVED_SPECIMEN', 'MATERIAL_SAMPLE'],
-#                 occurrenceStatus='PRESENT',
-#                 hasCoordinate=True,
-#                 hasGeospatialIssue=False,
-#                 limit=self.max_records
-#             )
-#
-#             occurrences = resp.get('results', [])
-#             lines = []
-#
-#             for occ in occurrences:
-#                 occ_out = {
-#                     'accession': record.get('accession'),
-#                     'tax_id': record.get('tax_id'),
-#                     'species': record.get('scientificName'),  # Name from ENA
-#                     'gbif_usageKey': occ.get('taxonKey'),
-#                     'gbif_species': occ.get('species'),  # Name in GBIF.
-#                     'decimalLatitude': occ.get('decimalLatitude'),
-#                     'decimalLongitude': occ.get('decimalLongitude'),
-#                     'coordinateUncertaintyInMeters': occ.get('coordinateUncertaintyInMeters'),
-#                     'geodeticDatum': occ.get('geodeticDatum'),
-#                     'elevation': occ.get('elevation'),
-#                     'eventDate': occ.get('eventDate'),
-#                     'countryCode': occ.get('countryCode'),
-#                     'gadm': occ.get('gadm'),
-#                     'basisOfRecord': occ.get('basisOfRecord'),
-#                     'occurrenceID': occ.get('occurrenceID'),
-#                     'gbifID': occ.get('gbifID'),
-#                     'institutionCode': occ.get('institutionCode'),
-#                     'collectionCode': occ.get('collectionCode'),
-#                     'catalogNumber': occ.get('catalogNumber'),
-#                     'iucnRedListCategory': occ.get('iucnRedListCategory')
-#                 }
-#                 lines.append(json.dumps(occ_out))
-#
-#             with FileSystems.create(tmp_path) as f:
-#                 for line in lines:
-#                     f.write((line + '\n').encode('utf-8'))
-#             FileSystems.rename([tmp_path], [out_path])
-#
-#         except Exception as e:
-#             yield pvalue.TaggedOutput('dead', {
-#                 'species': species,
-#                 'error': str(e)
-#             })
 class WriteSpeciesOccurrencesFn(DoFn):
     """
     Fetch GBIF occurrences for one validated species, write them to a JSONL file,
@@ -786,6 +716,51 @@ class AnnotateWithBiogeoFn(DoFn):
 
 
 class BiogeoSummaryNestedFn(DoFn):
+    """
+    Aggregate biogeographic annotations per accession into a nested summary structure.
+
+    This DoFn expects grouped records of the form:
+        (accession, Iterable[record])
+
+    Each record may contain a dictionary of biogeographic annotations under
+    `self.output_key` (e.g. "biogeo_Ecoregion"), where values are lists of
+    categorical attributes such as realm, biome, or ecoregion.
+
+    For each accession, the transform:
+        - collects all values across records for each field
+        - deduplicates them using sets
+        - computes the number of unique values per field
+        - returns a nested summary with both counts and sorted values
+
+    Output format:
+        (accession, {
+            "accession": str,
+            "species": str,
+            "tax_id": str,
+            <output_key>: {
+                <field>: {
+                    "count": int,
+                    "values": List[str]
+                },
+                ...
+            }
+        })
+
+    Parameters
+    ----------
+    output_key : str, optional
+        Key in each input record containing the biogeographic annotation
+        dictionary. Also used as the key under which the nested summary is
+        stored in the output.
+
+    Notes
+    -----
+    - Assumes input records are grouped by accession (e.g. via GroupByKey).
+    - Only list-type values in the annotation dictionary are aggregated.
+    - Values are deduplicated and sorted to ensure deterministic output.
+    - Metadata fields (species, tax_id) are taken from the first record
+      in the group.
+    """
     def __init__(self, output_key="biogeo_Ecoregion"):
         self.output_key = output_key
 
@@ -817,7 +792,7 @@ class BiogeoSummaryNestedFn(DoFn):
             "accession": accession,
             "species": species,
             "tax_id": tax_id,
-            "biogeo_Ecoregion": nested
+            self.output_key: nested
         }
 
         output = (accession, summary)
