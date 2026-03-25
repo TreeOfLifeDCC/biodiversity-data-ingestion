@@ -606,6 +606,54 @@ class AnnotateWithCHELSAFn(DoFn):
 
 
 class ClimateSummaryFn(DoFn):
+    """
+    Aggregate climate annotations per accession into summary statistics.
+
+    This DoFn expects grouped records of the form:
+        (accession, Iterable[record])
+
+    Each record may contain a dictionary of climate variables under
+    `self.output_key` (e.g. "clim_CHELSA"), where values are numeric
+    (or None if missing).
+
+    For each accession, the transform:
+        - collects all valid (non-null) values per climate variable
+        - computes summary statistics (mean, min, max, count)
+        - returns a flattened summary dictionary per variable
+
+    Output format:
+        (accession, {
+            "accession": str,
+            "species": str,
+            "tax_id": str,
+            <output_key>: {
+                <variable>: {
+                    "mean": float,
+                    "min": float,
+                    "max": float,
+                    "count": int
+                },
+                ...
+            }
+        })
+
+    Parameters
+    ----------
+    output_key : str, optional
+        Key in each input record containing the climate annotation
+        dictionary. Also used as the key under which the summary
+        statistics are stored in the output.
+
+    Notes
+    -----
+    - Assumes input records are grouped by accession (e.g. via GroupByKey).
+    - Only numeric, non-null values are included in the aggregation.
+    - Missing or None values are ignored.
+    - Summary statistics are computed independently per variable.
+    - Metadata fields (species, tax_id) are taken from the first record
+      in the group.
+    - Output is deterministic given the same input records.
+    """
     def __init__(self, input_key="clim_CHELSA"):
         self.input_key = input_key
 
