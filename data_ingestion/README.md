@@ -224,7 +224,7 @@ python -m biodiv_pipelines.spatial_annotation_pipeline \
   --project "${PROJECT_ID}" \
   --runner DirectRunner
 ```
-Use cleaned occurrence records to extract climate and area classification information from spatial data layers. At the moment: CHELSA climatologies and WWF Ecorregions (Dinnerstein et al. 2017).
+Use cleaned occurrence records to extract climate and area classification information from spatial data layers. At the moment: CHELSA climatologies and UNEP-WCMC Ecoregions (Dinnerstein et al. 2017).
 
 **Supports:**
 - `climate_dir` and `biogeo_vector` are paths to shapefiles containing the land and centroids of the world.
@@ -448,7 +448,7 @@ gcloud builds submit . --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/biodiversity
 ### 4. Create Dataflow Flex template
 
 ```bash
-gcloud dataflow flex-template build gs://${BUCKET}/taxonomy_flex_template.json \
+gcloud dataflow flex-template build gs://${BUCKET}/flex-templates/taxonomy_flex_template.json \
   --image ${REGION}-docker.pkg.dev/${PROJECT_ID}/biodiversity-images/${IMAGE} \
   --sdk-language PYTHON \
   --metadata-file metadata_taxonomy.json \
@@ -541,7 +541,7 @@ biodiv-pipelines-dev/
 
 **Out:** `<your-bucket>/biodiv-pipelines-prod/out/occurrences_clean/occ_.*,jsonl`
 
-### BigQuery Tables
+### BigQuery Warehouse Tables
 
 **BigQuery prod dataset:** `gbdp`
 **BigQuery dev dataset:** `your_dev_dataset`
