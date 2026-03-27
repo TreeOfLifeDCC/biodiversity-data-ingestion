@@ -121,7 +121,7 @@ def spatial_annotation_pipeline(args, beam_args):
                     schema=bq_schema,
                     method='FILE_LOADS',
                     custom_gcs_temp_location=args.temp_location,
-                    write_disposition=BigQueryDisposition.WRITE_TRUNCATE,
+                    write_disposition=BigQueryDisposition.WRITE_APPEND,
                     create_disposition=BigQueryDisposition.CREATE_IF_NEEDED
                 )
             )
