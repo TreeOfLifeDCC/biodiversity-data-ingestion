@@ -55,28 +55,73 @@ data/bioregions/Ecoregions2017.shp
 
 For convenience, you can download all the above files here: https://drive.google.com/drive/folders/1AQ-vggPieKmCjHA65cuvj7O1Q6nqDQab?usp=sharing
 
+All the occurrence records are downloaded from GBIF using the [pygbif](https://pygbif.readthedocs.io/en/latest/) python module.
+
 ### 4. Project layout
 
-Main pipeline entry points:
-
-* `taxonomy_pipeline.py`
-* `occurrences_pipeline.py`
-* `cleaning_occs_pipeline.py`
-* `spatial_annotation_pipeline.py`
-* `range_estimation_pipeline.py`
-* `data_provenance_pipeline.py`
-
-### 3. Run pattern
-
-Each pipeline follows the same local pattern:
-
-```bash
-python -m biodiv_pipelines.<pipeline> --arg1 value1 --arg2 value2
+```text
+.
+├── Dockerfile
+├── README.md
+├── main.py
+├── metadata_cleaning_occs.json
+├── metadata_data_provenance.json
+├── metadata_occurrences.json
+├── metadata_range_estimation.json
+├── metadata_spatial_annotation.json
+├── metadata_taxonomy.json
+├── pyproject.toml
+├── requirements.txt
+├── setup.py
+└── src
+    └── dependencies
+        ├── __init__.py
+        ├── biogeo_summary_pipeline.py
+        ├── cleaning_occs_launcher.py
+        ├── cleaning_occs_pipeline.py
+        ├── cleaning_summary_pipeline.py
+        ├── climate_summary_pipeline.py
+        ├── data_provenance_launcher.py
+        ├── data_provenance_pipeline.py
+        ├── launcher.py
+        ├── occurrences_launcher.py
+        ├── occurrences_pipeline.py
+        ├── range_estimation_launcher.py
+        ├── range_estimation_pipeline.py
+        ├── spatial_annotation_launcher.py
+        ├── spatial_annotation_pipeline.py
+        ├── taxonomy_launcher.py
+        ├── taxonomy_pipeline.py
+        └── utils
+            ├── __init__.py
+            ├── bq_gbif_occurrences_schema.json
+            ├── bq_metadata_url_schema.json
+            ├── bq_range_estimates_schema.json
+            ├── bq_spatial_annotation_schema.json
+            ├── bq_spatial_annotation_summ_schema.json
+            ├── bq_taxonomy_schema.json
+            ├── cleaning_occs.py
+            ├── helpers.py
+            └── transforms.py
 ```
 
-Beam runner options can also be passed after the pipeline arguments when needed.
+#### Main pipeline entry points for individual pipelines:
 
-## Pipeline order
+- `taxonomy_pipeline.py`
+- `occurrences_pipeline.py`
+- `cleaning_occs_pipeline.py`
+- `spatial_annotation_pipeline.py`
+- `range_estimation_pipeline.py`
+- `data_provenance_pipeline.py`
+
+#### Main pipeline entry points for Dataflow flex templates:
+
+- `main.py`
+- `launcher.py`
+
+See below for more details: [Run using Dataflow Flex Templates](#run-using-dataflow-flex-templates)
+
+### Pipeline order
 
 Recommended execution order:
 
@@ -87,11 +132,40 @@ Recommended execution order:
 5. Range estimation
 6. Data provenance
 
-## Minimal local execution (development)
+### Pipeline artifacts and outputs "folder" structure
 
-Run pipelines locally using the DirectRunner (default).
+```text
+.
+├── data/
+│   ├── bioregions/
+│   ├── climate/
+│   └── spatial_processing/
+├── out
+│    ├── metadata/
+│    ├── occurrences/
+│    ├── spatial/
+│    └── taxonomy/
+│
+├── schemas
+├── flex-templates
+├── staging
+└── temp
+```
 
-Ensure all input data exists in GCS or in your local directories before running (schemas, climate, bioregions, etc.).
+
+## Local execution
+
+### 3. Run pattern
+
+Each pipeline follows the same local pattern:
+
+```bash
+python -m biodiv_pipelines.<pipeline> --arg1 value1 --arg2 value2
+```
+
+- Beam runner options can also be passed after the pipeline arguments when needed.
+- Run pipelines locally using the DirectRunner (default).
+- Ensure all input data exists in GCS or in your local directories before running (schemas, climate, bioregions, etc.).
 
 Define your variables:
 
@@ -511,9 +585,9 @@ Main “folder” name: `biodiv-pipelines-prod`
 
 Dev name: `biodive-pipelines-dev`
 
-### Pipelines "folder" structure: 
+#### Pipelines "folder" structure: 
 
-```bash
+```text
 biodiv-pipelines-dev/
 ├── data/
 │   ├── bioregions/
@@ -529,8 +603,8 @@ biodiv-pipelines-dev/
 ├── flex-templates
 ├── staging
 └── temp
-
 ```
+
 ### GSC object naming structure:
 
 `<your-bucket>/biodiv-pipelines-prod/<any_above>`
