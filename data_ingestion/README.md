@@ -525,7 +525,7 @@ biodiv-pipelines-dev/
 │    ├── spatial/
 │    └── taxonomy/
 │
-├── schemes
+├── schemas
 ├── flex-templates
 ├── staging
 └── temp
