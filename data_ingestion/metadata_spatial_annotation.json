@@ -1,0 +1,75 @@
+{
+  "name": "spatial-annotation-pipeline",
+  "description": "Annotates cleaned GBIF occurrences with spatial datasets such as CHELSA climate and ecoregions",
+  "parameters": [
+    {
+      "name": "sdk_container_image",
+      "label": "Worker SDK Container Image",
+      "helpText": "Container image URI used for the Python SDK harness on Dataflow workers. This must contain your packaged pipelines and dependencies.",
+      "isOptional": true
+    },
+    {
+      "name": "experiments",
+      "label": "Experiments",
+      "helpText": "Comma-separated Dataflow experiments. For custom containers, Runner v2 is required. Use 'use_runner_v2' for batch.",
+      "defaultValue": "use_runner_v2",
+      "isOptional": true
+    },
+    {
+      "name": "pipeline",
+      "label": "Pipeline Identifier",
+      "helpText": "Which pipeline to launch (must be 'spatial_annotation')",
+      "defaultValue": "spatial_annotation"
+    },
+    {
+      "name": "input_occs",
+      "label": "Input Occurrence Files",
+      "helpText": "Glob for cleaned JSONL files (e.g., gs://bucket/occurrences/clean/occ_*.jsonl)",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "climate_dir",
+      "label": "CHELSA Climate Directory",
+      "helpText": "GCS or local path to CHELSA climate raster directory",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "biogeo_vector",
+      "label": "Biogeographic Vector Dataset",
+      "helpText": "GCS or local path to vector dataset (e.g., ecoregions shapefile)",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "annotated_output",
+      "label": "Annotated Output Path",
+      "helpText": "GCS output path for full annotated records",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "summary_output",
+      "label": "Spatial Summary Output",
+      "helpText": "GCS output path for joined spatial summary",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "bq_summary_table",
+      "label": "BigQuery Summary Table",
+      "helpText": "Optional BigQuery table for joined summary (project:dataset.table)",
+      "isOptional": true
+    },
+    {
+      "name": "bq_schema",
+      "label": "BigQuery Schema Path",
+      "helpText": "Optional GCS path to BigQuery schema JSON",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "temp_location",
+      "label": "GCS Temp Location",
+      "helpText": "GCS path for temporary files used in BigQuery I/O",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    }
+  ]
+}

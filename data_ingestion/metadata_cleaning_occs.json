@@ -1,0 +1,100 @@
+{
+  "name": "cleaning-pipeline",
+  "description": "Cleans GBIF occurrence records spatial validation",
+  "parameters": [
+    {
+      "name": "sdk_container_image",
+      "label": "Worker SDK Container Image",
+      "helpText": "Container image URI used for the Python SDK harness on Dataflow workers. This must contain your packaged pipelines and dependencies.",
+      "isOptional": true
+    },
+    {
+      "name": "experiments",
+      "label": "Experiments",
+      "helpText": "Comma-separated Dataflow experiments. For custom containers, Runner v2 is required. Use 'use_runner_v2' for batch.",
+      "defaultValue": "use_runner_v2",
+      "isOptional": true
+    },
+    {
+      "name": "pipeline",
+      "label": "Pipeline Identifier",
+      "helpText": "Which pipeline to launch (must be 'cleaning')",
+      "defaultValue": "cleaning_occs"
+    },
+    {
+      "name": "input_glob",
+      "label": "Input File Pattern",
+      "helpText": "Glob for raw JSONL files (e.g., gs://bucket/out/occurrences_raw/*.jsonl)",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "output_dir",
+      "label": "Cleaned Output Directory",
+      "helpText": "GCS path to write cleaned JSONL files",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "land_shapefile",
+      "label": "Land Shapefile",
+      "helpText": "Path to Natural Earth land shapefile",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "centroid_shapefile",
+      "label": "Centroid Shapefile",
+      "helpText": "Path to admin-0 label points shapefile",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "min_uncertainty",
+      "label": "Min Coordinate Uncertainty",
+      "helpText": "Minimum coordinate uncertainty in meters",
+      "defaultValue": "1000"
+    },
+    {
+      "name": "max_uncertainty",
+      "label": "Max Coordinate Uncertainty",
+      "helpText": "Maximum coordinate uncertainty in meters",
+      "defaultValue": "5000"
+    },
+    {
+      "name": "max_centroid_dist",
+      "label": "Max Centroid Distance",
+      "helpText": "Maximum distance to centroid in meters",
+      "defaultValue": "5000"
+    },
+    {
+      "name": "output_consolidated",
+      "label": "Consolidated Output Path",
+      "helpText": "Optional consolidated output file path",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "bq_table",
+      "label": "BigQuery Table",
+      "helpText": "BigQuery table to write cleaned records (project:dataset.table)",
+      "isOptional": true
+    },
+    {
+      "name": "bq_schema",
+      "label": "BigQuery Schema Path",
+      "helpText": "Optional GCS path to BigQuery schema JSON",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "temp_location",
+      "label": "GCS Temp Location",
+      "helpText": "GCS path for temporary files used in BigQuery I/O",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "shards",
+      "label": "Sharding Factor",
+      "helpText": "Number of output shards to avoid GroupByKey skew",
+      "defaultValue": "5"
+    }
+  ]
+}

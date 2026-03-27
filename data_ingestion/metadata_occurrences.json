@@ -1,0 +1,43 @@
+{
+  "name": "occurrences-pipeline",
+  "description": "Search GBIF occurrences for the species with validated taxonomy.",
+  "parameters": [
+    {
+      "name": "sdk_container_image",
+      "label": "Worker SDK Container Image",
+      "helpText": "Container image URI used for the Python SDK harness on Dataflow workers. This must contain your packaged pipelines and dependencies.",
+      "isOptional": true
+    },
+    {
+      "name": "experiments",
+      "label": "Experiments",
+      "helpText": "Comma-separated Dataflow experiments. For custom containers, Runner v2 is required. Use 'use_runner_v2' for batch.",
+      "defaultValue": "use_runner_v2",
+      "isOptional": true
+    },
+    {
+      "name": "pipeline",
+      "label": "Pipeline Identifier",
+      "helpText": "Which pipeline to launch (must be 'occurrences')",
+      "defaultValue": "occurrences"
+    },
+    {
+      "name": "validated_input",
+      "label": "Validated Taxonomy Input",
+      "helpText": "Path to the validated taxonomy JSONL file",
+      "regexes": ["^gs:\\/\\/[^[:space:]]+$"]
+    },
+    {
+      "name": "output_dir",
+      "label": "Output Directory",
+      "helpText": "GCS directory to write GBIF occurrence files",
+      "regexes": ["^gs:\\/\\/[^[:space:]]+$"]
+    },
+    {
+      "name": "limit",
+      "label": "Occurrence Limit per Species",
+      "helpText": "Maximum number of GBIF occurrences per taxon (max 300)",
+      "defaultValue": "150"
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+[
+  {
+    "name": "accession",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "species",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "tax_id",
+    "type": "INTEGER",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "occurrenceID",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "decimalLatitude",
+    "type": "FLOAT",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "decimalLongitude",
+    "type": "FLOAT",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "clim_CHELSA",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      {
+        "name": "bio1",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio2",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio3",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio4",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio5",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio6",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio7",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio8",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio9",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio10",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio11",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio12",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio13",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio14",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio15",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio16",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio17",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio18",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      },
+      {
+        "name": "bio19",
+        "type": "FLOAT",
+        "mode": "NULLABLE"
+      }
+    ]
+  },
+  {
+    "name": "biogeo_Ecoregion",
+    "type": "RECORD",
+    "mode": "NULLABLE",
+    "fields": [
+      {
+        "name": "realm",
+        "type": "STRING",
+        "mode": "REPEATED"
+      },
+      {
+        "name": "biome",
+        "type": "STRING",
+        "mode": "REPEATED"
+      },
+      {
+        "name": "ecoregion",
+        "type": "STRING",
+        "mode": "REPEATED"
+      }
+    ]
+  }
+]
