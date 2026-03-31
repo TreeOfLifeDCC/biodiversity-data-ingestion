@@ -38,3 +38,23 @@ def start_apache_beam(biodiversity_project_name):
         location=region,
         wait_until_finished=True,
     )
+
+
+def check_field_existence(record):
+    """
+    Extract values, units and ontology terms from a BioSamples 'characteristics' record.
+
+    This mirrors the helper used in the Beam utilities so Airflow code can depend on it
+    without importing from the Beam package.
+    """
+    values = []
+    units = []
+    ontology_terms = []
+    for element in record:
+        values.append(element.get("text", ""))
+        if "unit" in element:
+            units.append(element["unit"])
+        if "ontologyTerms" in element and element["ontologyTerms"]:
+            ontology_terms.append(element["ontologyTerms"][0])
+    return ", ".join(values), ", ".join(units), ", ".join(ontology_terms)
+
