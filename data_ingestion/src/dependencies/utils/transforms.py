@@ -18,6 +18,7 @@ from shapely import wkt
 from shapely.geometry import Point, MultiPoint
 from shapely.ops import transform
 from rasterio.mask import mask
+from requests.exceptions import RequestException
 from typing import Any, Dict, Iterable, List, Optional
 from dependencies.utils.helpers import sanitize_species_name, fetch_spatial_file_to_local, extract_species_name
 
@@ -215,14 +216,31 @@ class WriteSpeciesOccurrencesFn(DoFn):
     Fetch GBIF occurrences for one validated species, write them to a JSONL file,
     and emit one success status record on the main output.
 
+    Throttling:
+      - sleep once before each GBIF request
+
+    Retry policy:
+      - one retry after the first failed request
+      - fixed delay between attempts
+
     On failure, emit a tagged "dead" record.
     """
 
     DEAD = "dead"
 
-    def __init__(self, output_dir, max_records=150):
+    def __init__(
+        self,
+        output_dir: str,
+        max_records: int = 150,
+        sleep_seconds: float = 0.25,
+        retry_delay_seconds: float = 1.5,
+        max_retries: int = 1,
+    ):
         self.output_dir = output_dir
         self.max_records = max_records
+        self.sleep_seconds = sleep_seconds
+        self.retry_delay_seconds = retry_delay_seconds
+        self.max_retries = max_retries
 
         self.species_processed = Metrics.counter(
             self.__class__, "species_processed"
@@ -236,9 +254,34 @@ class WriteSpeciesOccurrencesFn(DoFn):
         self.species_failed = Metrics.counter(
             self.__class__, "species_failed"
         )
+        self.gbif_retries = Metrics.counter(
+            self.__class__, "gbif_retries"
+        )
 
     def setup(self):
         self.gbif_client = gbif_occ
+
+    def _search_with_retry(self, *, usage_key: int):
+        attempts = self.max_retries + 1
+
+        for attempt in range(attempts):
+            try:
+                return self.gbif_client.search(
+                    taxonKey=usage_key,
+                    basisOfRecord=["PRESERVED_SPECIMEN", "MATERIAL_SAMPLE"],
+                    occurrenceStatus="PRESENT",
+                    hasCoordinate=True,
+                    hasGeospatialIssue=False,
+                    limit=self.max_records,
+                )
+            except RequestException:
+                if attempt < attempts - 1:
+                    self.gbif_retries.inc()
+                    time.sleep(self.retry_delay_seconds)
+                else:
+                    raise
+
+        raise RuntimeError("Unreachable: retry loop exited without return or exception")
 
     def process(self, record):
         species = record.get("scientificName")
@@ -252,15 +295,10 @@ class WriteSpeciesOccurrencesFn(DoFn):
         tmp_path = f"{out_path}.tmp"
 
         try:
-            resp = self.gbif_client.search(
-                taxonKey=usage_key,
-                basisOfRecord=["PRESERVED_SPECIMEN", "MATERIAL_SAMPLE"],
-                occurrenceStatus="PRESENT",
-                hasCoordinate=True,
-                hasGeospatialIssue=False,
-                limit=self.max_records,
-            )
+            if self.sleep_seconds:
+                time.sleep(self.sleep_seconds)
 
+            resp = self._search_with_retry(usage_key=usage_key)
             occurrences = resp.get("results", [])
 
             with FileSystems.create(tmp_path) as f:
@@ -280,13 +318,13 @@ class WriteSpeciesOccurrencesFn(DoFn):
                         "countryCode": occ.get("countryCode"),
                         "gadm": occ.get("gadm"),
                         "basisOfRecord": occ.get("basisOfRecord"),
-                        'datasetKey': occ.get('datasetKey'),
+                        "datasetKey": occ.get("datasetKey"),
                         "occurrenceID": occ.get("occurrenceID"),
                         "gbifID": occ.get("gbifID"),
                         "institutionCode": occ.get("institutionCode"),
                         "collectionCode": occ.get("collectionCode"),
                         "catalogNumber": occ.get("catalogNumber"),
-                        'licence': occ.get('licence'),
+                        "license": occ.get("license"),
                         "iucnRedListCategory": occ.get("iucnRedListCategory"),
                     }
                     f.write((json.dumps(occ_out) + "\n").encode("utf-8"))

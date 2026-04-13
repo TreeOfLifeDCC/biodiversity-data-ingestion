@@ -6,6 +6,7 @@ from apache_beam.options.pipeline_options import PipelineOptions, SetupOptions
 from dependencies.utils.transforms import WriteSpeciesOccurrencesFn
 
 
+
 def occurrences_pipeline(args, beam_args):
     pipeline_options = PipelineOptions(beam_args)
     pipeline_options.view_as(SetupOptions).save_main_session = True
@@ -18,11 +19,14 @@ def occurrences_pipeline(args, beam_args):
         )
 
         results = (
-            records
-            | "FetchAndWriteOccurrences" >> beam.ParDo(
-                WriteSpeciesOccurrencesFn(
-                    output_dir=args.output_dir,
-                    max_records=args.limit
+                records
+                | "FetchAndWriteOccurrences" >> beam.ParDo(
+                    WriteSpeciesOccurrencesFn(
+                        output_dir=args.output_dir,
+                        max_records=args.limit,
+                        sleep_seconds=args.sleep_seconds,
+                        retry_delay_seconds=args.retry_delay_seconds,
+                        max_retries=args.max_retries,
                 )
             ).with_outputs("dead", main="success")
         )
@@ -90,6 +94,10 @@ if __name__ == "__main__":
     parser.add_argument("--validated_input", required=True, help="Path to validated taxonomy JSONL file")
     parser.add_argument("--output_dir", required=True, help="Directory to store occurrence files")
     parser.add_argument("--limit", type=int, default=150, help="Max GBIF occurrences per species")
+
+    parser.add_argument("--sleep_seconds", type=float, default=0.25, help="Delay before each GBIF request")
+    parser.add_argument( "--retry_delay_seconds", type=float, default=1.5, help="Delay before retrying a failed GBIF request")
+    parser.add_argument( "--max_retries", type=int, default=1, help="Number of retries after the first failed GBIF request")
 
     args, beam_args = parser.parse_known_args()
     occurrences_pipeline(args, beam_args)
