@@ -37,7 +37,25 @@
       "name": "limit",
       "label": "Occurrence Limit per Species",
       "helpText": "Maximum number of GBIF occurrences per taxon (max 300)",
-      "defaultValue": "150"
+      "defaultValue": "300"
+    },
+    {
+      "name": "sleep_seconds",
+      "label": "Seconds to Sleep Before Each GBIF Request",
+      "helpText": "Seconds to sleep before each GBIF request. This is to avoid hitting the API rate limit.",
+      "defaultValue": "0.25"
+    },
+    {
+      "name": "retry_delay_seconds",
+      "label": "Retry delay seconds after a failed GBIF request",
+      "helpText": "Maximum seconds to wait before retrying a failed GBIF request. This is to avoid hitting the API rate limit.",
+      "defaultValue": "1.5"
+    },
+    {
+      "name": "max_retries",
+      "label": "Number of retries after the first failed GBIF request",
+      "helpText": "Maximum number of retries after the first failed GBIF request. This is to avoid hitting the API rate limit.",
+      "defaultValue": "1"
     }
   ]
 }
