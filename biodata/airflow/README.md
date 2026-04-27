@@ -364,6 +364,10 @@ Examples:
 ```
 If the gate skips execution, the DAG writes: `<run_prefix>/_SKIPPED` marker.
 
+The pipelines are audited in search for species missed among runs. 
+These species are backfilled by manual runs of the pipeline. In these cases,
+the run/pipeline marker is `<run_prefix>/_BACKFILLED_MANUAL`
+
 #### 9. Delete Composer Environment step
 The DAG calls the Composer delete service to delete the Composer environment" `delete_composer_env`
 
