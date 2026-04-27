@@ -1,0 +1,3 @@
+functions-framework==3.*
+google-cloud-orchestration-airflow==1.*
+google-api-core==2.*
