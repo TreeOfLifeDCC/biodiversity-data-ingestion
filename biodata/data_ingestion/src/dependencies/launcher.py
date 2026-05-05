@@ -9,7 +9,9 @@ from dependencies import (
     cleaning_occs_launcher,
     spatial_annotation_launcher,
     range_estimation_launcher,
-    data_provenance_launcher
+    data_provenance_launcher,
+    ingest_genome_annotations_launcher,
+    load_genome_annotations_launcher
 )
 
 
@@ -30,5 +32,9 @@ def launch_pipeline(argv):
         range_estimation_launcher.run(remaining_argv)
     elif args.pipeline == "data_provenance":
         data_provenance_launcher.run(remaining_argv)
+    elif args.pipeline == "ingest_genome_annotations":
+        ingest_genome_annotations_launcher.run(remaining_argv)
+    elif args.pipeline == "load_genome_annotations":
+        load_genome_annotations_launcher.run(remaining_argv)
     else:
         raise ValueError(f"Unknown pipeline: {args.pipeline}")
