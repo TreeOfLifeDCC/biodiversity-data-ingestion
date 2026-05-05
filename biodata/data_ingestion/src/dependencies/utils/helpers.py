@@ -331,3 +331,30 @@ def to_gate_row(rec: dict, status: str) -> dict:
         "date_seen": datetime.now(timezone.utc),
         "status": str(status),
     }
+
+
+def parse_annotations(sample):
+    sample_to_return = dict()
+    sample_to_return["record_type"] = sample["record_type"]
+    sample_to_return["accession"] = sample["accession"]
+    info = sample["info"].split(";")
+    for item in info:
+        if item:
+            try:
+                k, v = item.split()
+                if k in ["gene_id", "gene_version", "gene_source", "gene_biotype", "transcript_id",
+                         "transcript_version", "transcript_source", "transcript_biotype", "tag", "exon_number",
+                         "exon_id", "exon_version", "protein_id", "protein_version", "gene_name"]:
+                    sample_to_return[k] = v.replace('"', '')
+            except ValueError:
+                pass
+    return sample_to_return
+
+
+def filter_new_accessions(element):
+    accession, groups = element
+
+    # If accession NOT in existing → process it
+    if not groups["existing"]:
+        for record in groups["candidates"]:
+            yield record
