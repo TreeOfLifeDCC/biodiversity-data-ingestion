@@ -1322,6 +1322,8 @@ class LookupGTFUrlBatchFn(DoFn):
         # Emit results preserving input
         for element in elements:
             tax_id = element.get("tax_id")
+            if type(tax_id) == str:  # Safeguard against strings in tax_id
+                tax_id = int(tax_id)
 
             if tax_id in lookup:
                 self.found.inc()
