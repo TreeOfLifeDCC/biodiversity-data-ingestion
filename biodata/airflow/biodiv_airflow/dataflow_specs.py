@@ -151,3 +151,41 @@ def data_provenance_body(cfg: BiodivConfig) -> dict[str, Any]:
             "environment": _base_environment(cfg, "data_provenance"),
         }
     }
+
+
+def ingest_genome_annotations_body(cfg: BiodivConfig) -> dict[str, Any]:
+    return {
+        "launchParameter": {
+            "jobName": "biodiv-ingest-genome-annotations-{{ ds_nodash }}-{{ ts_nodash | lower }}",
+            "containerSpecGcsPath": cfg.ingest_genome_annotations_template,
+            "parameters": {
+                "pipeline": "ingest_genome_annotations",
+                "host": cfg.elastic_host,
+                "user": cfg.elastic_user,
+                "password": cfg.elastic_password,
+                "index": "data_portal",
+                "taxonomy_path": cfg.taxonomy_validated,
+                "output": cfg.gtf_manifest,
+                "gtf_staging_path": cfg.gtf_staging_path,
+            },
+            "environment": _base_environment(cfg, "ingest_genome_annotations"),
+        }
+    }
+
+
+def load_genome_annotations_body(cfg: BiodivConfig) -> dict[str, Any]:
+    return {
+        "launchParameter": {
+            "jobName": "biodiv-load-genome-annotations-{{ ds_nodash }}-{{ ts_nodash | lower }}",
+            "containerSpecGcsPath": cfg.load_genome_annotations_template,
+            "parameters": {
+                "pipeline": "load_genome_annotations",
+                "gtf_path": f"{cfg.gtf_manifest}/gtf_gcs_paths.jsonl",
+                "output": cfg.gtf_manifest,
+                "bq_schema": f"{cfg.output_base}/schemas/bq_genome_annotations_schema.json",
+                "bq_table": f"{cfg.gcp_project}.{cfg.bq_dataset}.bp_genome_annotations",
+            },
+            "environment": _base_environment(cfg, "load_genome_annotations"),
+
+        }
+    }
