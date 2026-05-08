@@ -49,7 +49,7 @@ def ingest_genome_annotations_pipeline(args, beam_args):
                     downloaded.main
                     | "FormatGTFPaths" >> beam.Map(json.dumps)
                     | "WriteGTFPaths" >> beam.io.WriteToText(
-                        file_path_prefix=args.output + "gtf_gcs_paths",
+                        file_path_prefix=args.output + "/gtf_gcs_paths",
                         file_name_suffix=".jsonl",
                         shard_name_template="",
                     )
@@ -59,7 +59,7 @@ def ingest_genome_annotations_pipeline(args, beam_args):
                     downloaded.file_stats
                     | "FormatStats" >> beam.Map(json.dumps)
                     | "WriteStats" >> beam.io.WriteToText(
-                        file_path_prefix=args.output + "download_status",
+                        file_path_prefix=args.output + "/download_status",
                         file_name_suffix=".jsonl",
                         shard_name_template="",
                     )
