@@ -52,6 +52,8 @@ class BiodivConfig:
     spatial_annotation_template: str
     range_estimates_template: str
     data_provenance_template: str
+    ingest_genome_annotations_template: str
+    load_genome_annotations_template: str
 
     # Artifacts
     taxonomy_validated: str
@@ -60,6 +62,10 @@ class BiodivConfig:
     spatial_annotations: str
     range_estimates: str
     data_provenance: str
+
+    # GTF staging dir and manifests
+    gtf_manifest: str
+    gtf_staging_path: str
 
     # Input data
     continental_land_shapefile: str
@@ -143,6 +149,8 @@ def load_config() -> BiodivConfig:
     spatial_annotation_template = f"{flex_base}/flex_spatial_annotations.json"
     range_estimates_template = f"{flex_base}/flex_range_estimation.json"
     data_provenance_template = f"{flex_base}/flex_data_provenance.json"
+    ingest_genome_annotations_template = f"{flex_base}/flex_ingest_genome_annotations.json"
+    load_genome_annotations_template = f"{flex_base}/flex_load_genome_annotations.json"
 
     # Artifacts
     taxonomy_validated = f"{run_prefix}/taxonomy/taxonomy_validated.jsonl"
@@ -151,6 +159,10 @@ def load_config() -> BiodivConfig:
     spatial_annotations = f"{run_prefix}/spatial"
     range_estimates = f"{run_prefix}/range_estimates"
     data_provenance = f"{run_prefix}/data_provenance/metadata_urls"
+
+    # GTF staging dir and manifests
+    gtf_manifest = f"{run_prefix}/gtf_manifest"
+    gtf_staging_path = f"{output_base}/gtf_files"
 
     # Input data
     continental_land_shapefile = f"{output_base}/data/spatial_processing/ne_10m_land/ne_10m_land.shp"
@@ -195,7 +207,11 @@ def load_config() -> BiodivConfig:
         spatial_annotation_template=spatial_annotation_template,
         range_estimates_template=range_estimates_template,
         data_provenance_template=data_provenance_template,
+        ingest_genome_annotations_template=ingest_genome_annotations_template,
+        load_genome_annotations_template=load_genome_annotations_template,
         taxonomy_validated=taxonomy_validated,
+        gtf_manifest=gtf_manifest,
+        gtf_staging_path=gtf_staging_path,
         raw_occurrences=raw_occurrences,
         cleaned_occurrences=cleaned_occurrences,
         spatial_annotations=spatial_annotations,
