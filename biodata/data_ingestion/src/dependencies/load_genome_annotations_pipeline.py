@@ -59,7 +59,7 @@ def load_genome_annotations_pipeline(args, beam_args):
                 file_stats
                 | "FormatStats" >> beam.Map(json.dumps)
                 | "WriteStats" >> beam.io.WriteToText(
-                    file_path_prefix=args.output + "bq_stats",
+                    file_path_prefix=args.output + "/bq_stats",
                     file_name_suffix=".jsonl",
                     shard_name_template="",
                 )
