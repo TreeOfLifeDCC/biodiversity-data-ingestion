@@ -206,14 +206,14 @@ def build_bq_genome_annotations_summary_sql(cfg: BiodivConfig) -> str:
 
     WITH accessions AS (
       SELECT DISTINCT accession
-      FROM `{cfg.gcp_project}.{cfg.bq_dataset}.annotations`
+      FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_genome_annotations`
     ),
     
     reduced_gene_biotypes AS (
       SELECT DISTINCT accession,
         gene_id,
         gene_biotype
-      FROM `{cfg.gcp_project}.{cfg.bq_dataset}.annotations`
+      FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_genome_annotations`
     ),
     
     count_gene_biotypes AS (
@@ -266,7 +266,7 @@ def build_bq_genome_annotations_summary_sql(cfg: BiodivConfig) -> str:
         DISTINCT accession,
         transcript_id,
         transcript_biotype
-      FROM `{cfg.gcp_project}.{cfg.bq_dataset}.annotations`
+      FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_genome_annotations`
     ),
     
     count_transcript_biotypes AS (
