@@ -49,9 +49,9 @@
       "regexes": ["^gs:\/\/[^[:space:]]+$"]
     },
     {
-      "name": "output",
+      "name": "manifest_path",
       "label": "Output Path (GCS)",
-      "helpText": "GCS path prefix for output files",
+      "helpText": "GCS path prefix for manifest files",
       "regexes": ["^gs:\/\/[^[:space:]]+$"]
     },
     {
