@@ -165,8 +165,10 @@ def ingest_genome_annotations_body(cfg: BiodivConfig) -> dict[str, Any]:
                 "password": cfg.elastic_password,
                 "index": "data_portal",
                 "taxonomy_path": cfg.taxonomy_validated,
-                "output": cfg.gtf_manifest,
+                "manifest_path": cfg.gtf_manifest,
                 "gtf_staging_path": cfg.gtf_staging_path,
+                "sdk_container_image": cfg.sdk_container_image,
+                "experiments": "use_runner_v2",
             },
             "environment": _base_environment(cfg, "ingest_genome_annotations"),
         }
@@ -184,6 +186,8 @@ def load_genome_annotations_body(cfg: BiodivConfig) -> dict[str, Any]:
                 "output": cfg.gtf_manifest,
                 "bq_schema": f"{cfg.output_base}/schemas/bq_genome_annotations_schema.json",
                 "bq_table": f"{cfg.gcp_project}.{cfg.bq_dataset}.bp_genome_annotations",
+                "sdk_container_image": cfg.sdk_container_image,
+                "experiments": "use_runner_v2",
             },
             "environment": _base_environment(cfg, "load_genome_annotations"),
 
