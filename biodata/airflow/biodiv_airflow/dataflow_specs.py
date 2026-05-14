@@ -170,7 +170,7 @@ def ingest_genome_annotations_body(cfg: BiodivConfig) -> dict[str, Any]:
                 "sdk_container_image": cfg.sdk_container_image,
                 "experiments": "use_runner_v2",
             },
-            "environment": _base_environment(cfg, "ingest_genome_annotations"),
+            "environment": _base_environment(cfg, "ingest-genome-annotations"),
         }
     }
 
@@ -189,7 +189,7 @@ def load_genome_annotations_body(cfg: BiodivConfig) -> dict[str, Any]:
                 "sdk_container_image": cfg.sdk_container_image,
                 "experiments": "use_runner_v2",
             },
-            "environment": _base_environment(cfg, "load_genome_annotations"),
+            "environment": _base_environment(cfg, "load-genome-annotations"),
 
         }
     }
