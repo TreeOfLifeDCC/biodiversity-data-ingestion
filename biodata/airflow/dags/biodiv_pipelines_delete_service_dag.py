@@ -75,6 +75,34 @@ with DAG(
         op_kwargs={"gcs_marker_uri": f"{cfg.run_prefix}/taxonomy/_SUCCESS"},
     )
 
+    run_ingest_genome_annotation_to_gcs = DataflowStartFlexTemplateOperator(
+        task_id="run_ingest_genome_annotation_to_gcs",
+        project_id=cfg.gcp_project,
+        location=cfg.gcp_region,
+        body=dataflow_specs.ingest_genome_annotations_body(cfg),
+        wait_until_finished=True,
+    )
+
+    mark_genome_annotation_ingestion_success = PythonOperator(
+        task_id="mark_ingest_genome_annotation_to_gcs_success",
+        python_callable=write_gcs_marker,
+        op_kwargs={"gcs_marker_uri": f"{cfg.gtf_manifest}/_SUCCESS_INGEST_TO_GCS"},
+    )
+
+    run_load_genome_annotation_to_bq = DataflowStartFlexTemplateOperator(
+        task_id="run_load_genome_annotation_to_bq",
+        project_id=cfg.gcp_project,
+        location=cfg.gcp_region,
+        body=dataflow_specs.load_genome_annotations_body(cfg),
+        wait_until_finished=True,
+    )
+
+    mark_load_genome_annotation_to_bq_success = PythonOperator(
+        task_id="mark_load_genome_annotation_to_bq_success",
+        python_callable=write_gcs_marker,
+        op_kwargs={"gcs_marker_uri": f"{cfg.gtf_manifest}/_SUCCESS_LOAD_TO_BQ"},
+    )
+
     run_occurrences = DataflowStartFlexTemplateOperator(
         task_id="run_occurrences",
         project_id=cfg.gcp_project,
@@ -145,18 +173,17 @@ with DAG(
         op_kwargs={"gcs_marker_uri": f"{cfg.data_provenance}/_SUCCESS"},
     )
 
-    # TODO: Add this task later when the annotations ingestion pipeline is ready
-    # run_genome_biotype_summary_bq = BigQueryInsertJobOperator(
-    #     task_id="run_genome_biotype_summary_bq",
-    #     project_id=cfg.gcp_project,
-    #     location=cfg.gcp_region,
-    #     configuration={
-    #         "query": {
-    #             "query": build_bq_genome_annotations_summary_sql(cfg),
-    #             "useLegacySql": False,
-    #         }
-    #     },
-    # )
+    run_genome_biotype_summary_bq = BigQueryInsertJobOperator(
+        task_id="run_genome_biotype_summary_bq",
+        project_id=cfg.gcp_project,
+        location=cfg.gcp_region,
+        configuration={
+            "query": {
+                "query": build_bq_genome_annotations_summary_sql(cfg),
+                "useLegacySql": False,
+            }
+        },
+    )
 
     run_biodiv_warehouse_integration_bq = BigQueryInsertJobOperator(
         task_id="run_biodiv_warehouse_integration_bq",
@@ -168,6 +195,12 @@ with DAG(
                 "useLegacySql": False,
             }
         },
+    )
+
+    mark_run_bq_integration_success = PythonOperator(
+        task_id="mark_run_bq_integration_success",
+        python_callable=write_gcs_marker,
+        op_kwargs={"gcs_marker_uri": f"{cfg.run_prefix}/_SUCCESS_BQ_INTEGRATION"},
     )
 
     mark_pipelines_completion_success = PythonOperator(
@@ -195,25 +228,49 @@ with DAG(
         execution_timeout=None,
     )
 
+    # Check if new species is available
     validate >> check_new_species_gate
     check_new_species_gate >> run_taxonomy
     check_new_species_gate >> mark_pipelines_skip_success >> delete_env
 
+    # Biodiversity annotation pipelines
     (
-        run_taxonomy
-        >> mark_taxonomy_success
-        >> run_occurrences
-        >> mark_occurrences_success
-        >> run_cleaning_occs
-        >> mark_cleaning_occs_success
-        >> run_spatial_annotation
-        >> mark_spatial_annotation_success
-        >> run_range_estimation
-        >> mark_range_estimation_success
-        >> run_data_provenance
-        >> mark_data_provenance_success
-        # >> run_genome_biotype_summary_bq
-        >> run_biodiv_warehouse_integration_bq
-        >> mark_pipelines_completion_success
-        >> delete_env
+            run_taxonomy
+            >> mark_taxonomy_success
+            >> run_occurrences
+            >> mark_occurrences_success
+            >> run_cleaning_occs
+            >> mark_cleaning_occs_success
+            >> run_spatial_annotation
+            >> mark_spatial_annotation_success
+            >> run_range_estimation
+            >> mark_range_estimation_success
+            >> run_data_provenance
+            >> mark_data_provenance_success
     )
+
+    # Ingestion of genome annotations to GCS & BQ
+    (
+            mark_taxonomy_success
+            >> run_ingest_genome_annotation_to_gcs
+            >> mark_genome_annotation_ingestion_success
+            >> run_load_genome_annotation_to_bq
+            >> mark_load_genome_annotation_to_bq_success
+    )
+
+    # Data integration in BQ
+    (
+            [
+                mark_data_provenance_success,
+                mark_load_genome_annotation_to_bq_success
+            ] >> run_genome_biotype_summary_bq
+            >> run_biodiv_warehouse_integration_bq
+            >> mark_run_bq_integration_success
+    )
+
+    # Mark completion of pipelines
+    [
+        mark_data_provenance_success,
+        mark_load_genome_annotation_to_bq_success,
+        mark_run_bq_integration_success
+    ] >> mark_pipelines_completion_success >> delete_env
