@@ -59,7 +59,7 @@ def load_genome_annotations_pipeline(args, beam_args):
                 file_stats
                 | "FormatStats" >> beam.Map(json.dumps)
                 | "WriteStats" >> beam.io.WriteToText(
-                    file_path_prefix=args.output + "/bq_stats",
+                    file_path_prefix=args.output + "/bq_ingestion",
                     file_name_suffix=".jsonl",
                     shard_name_template="",
                 )
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--gtf_path", required=True, help="Path to GTF file manifest gtf_gcs_paths.jsonl")
-    parser.add_argument("--output", required=True, help="Output path for bq_stats.jsonl")
+    parser.add_argument("--output", required=True, help="Output path for bq_ingestion.jsonl")
     parser.add_argument("--bq_table", required=True, help="BigQuery table name: project.dataset.table")
     parser.add_argument("--bq_schema", required=True, help="Path to BigQuery schema JSON file")
     parser.add_argument("--temp_location", required=True, help="GCS temp path for BigQuery file loads")
