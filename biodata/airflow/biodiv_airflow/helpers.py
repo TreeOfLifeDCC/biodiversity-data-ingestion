@@ -1,10 +1,15 @@
+import json
+
 import requests
 import time
 
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
-from biodiv_airflow.config import BiodivConfig
 from google.auth.transport.requests import Request
 from google.oauth2 import id_token
+from google.cloud import storage
+
+from biodiv_airflow.config import BiodivConfig
+from biodiv_airflow.sql_queries import build_bq_genome_annotations_summary_sql
 
 
 def split_gcs_uri(gcs_uri: str) -> tuple[str, str]:
@@ -287,3 +292,53 @@ def choose_branch(
         print(f"[GATE] Threshold not met. Skipping pipeline. gate_result={result}")
         return skip_task_id
 
+
+def build_bq_genome_annotations_summary_sql_from_manifest(
+    cfg: BiodivConfig,
+    manifest_uri: str,
+) -> str:
+    """
+    Build the genome biotype summary SQL from a BQ ingestion manifest.
+
+    The manifest is expected to be a GCS JSONL file containing records with:
+    - accession
+    - status
+
+    Only records with status == "SUCCESS" are included.
+    """
+    bucket_and_blob = manifest_uri.removeprefix("gs://")
+    bucket_name, blob_name = bucket_and_blob.split("/", 1)
+
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+
+    accessions: set[str] = set()
+
+    with blob.open("r") as file_obj:
+        for line in file_obj:
+            line = line.strip()
+            if not line:
+                continue
+
+            record = json.loads(line)
+
+            if record.get("status") != "SUCCESS":
+                continue
+
+            accession = record.get("accession")
+            if accession:
+                accessions.add(accession)
+
+    if not accessions:
+        raise ValueError(f"No new accessions found in {manifest_uri}")
+
+    sorted_accessions = sorted(accessions)
+
+    print(f"Found {len(sorted_accessions)} new accessions in {manifest_uri}")
+    print(f"New accessions sample: {sorted_accessions[:20]}")
+
+    return build_bq_genome_annotations_summary_sql(
+        cfg=cfg,
+        run_accessions=sorted_accessions,
+    )
