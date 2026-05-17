@@ -15,7 +15,9 @@ from biodiv_airflow.helpers import (
     write_gcs_marker,
     validate_config,
     choose_branch,
-    call_delete_service)
+    build_bq_genome_annotations_summary_sql_from_manifest,
+    call_delete_service
+)
 
 from biodiv_airflow import dataflow_specs
 
@@ -173,13 +175,22 @@ with DAG(
         op_kwargs={"gcs_marker_uri": f"{cfg.data_provenance}/_SUCCESS"},
     )
 
+    build_genome_biotype_summary_sql = PythonOperator(
+        task_id="build_genome_biotype_summary_sql",
+        python_callable=build_bq_genome_annotations_summary_sql_from_manifest,
+        op_kwargs={
+            "cfg": cfg,
+            "manifest_uri": f"{cfg.gtf_manifest}/bq_ingestion.jsonl",
+        },
+    )
+
     run_genome_biotype_summary_bq = BigQueryInsertJobOperator(
         task_id="run_genome_biotype_summary_bq",
         project_id=cfg.gcp_project,
         location=cfg.gcp_region,
         configuration={
             "query": {
-                "query": build_bq_genome_annotations_summary_sql(cfg),
+                "query": "{{ ti.xcom_pull(task_ids='build_genome_biotype_summary_sql') }}",
                 "useLegacySql": False,
             }
         },
@@ -200,7 +211,7 @@ with DAG(
     mark_run_bq_integration_success = PythonOperator(
         task_id="mark_run_bq_integration_success",
         python_callable=write_gcs_marker,
-        op_kwargs={"gcs_marker_uri": f"{cfg.run_prefix}/_SUCCESS_BQ_INTEGRATION"},
+        op_kwargs={"gcs_marker_uri": f"{cfg.gtf_manifest}/_SUCCESS_BQ_INTEGRATION"},
     )
 
     mark_pipelines_completion_success = PythonOperator(
@@ -263,7 +274,9 @@ with DAG(
             [
                 mark_data_provenance_success,
                 mark_load_genome_annotation_to_bq_success
-            ] >> run_genome_biotype_summary_bq
+            ]
+            >> build_genome_biotype_summary_sql
+            >> run_genome_biotype_summary_bq
             >> run_biodiv_warehouse_integration_bq
             >> mark_run_bq_integration_success
     )
