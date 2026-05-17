@@ -362,7 +362,7 @@ gcloud scheduler jobs create http bp-composer-load-job \
 **Trigger job**
 
 ```bash
-gcloud scheduler jobs create http composer-trigger-job \
+gcloud scheduler jobs create http bp-composer-trigger-job \
   --schedule="15 7 1 * *" \
   --uri="$TRIGGER_URL" \
   --http-method=POST \
@@ -373,9 +373,9 @@ gcloud scheduler jobs create http composer-trigger-job \
 #### Test end-to-end lifecycle
 
 ```bash
-gcloud scheduler jobs run composer-create-job --location "$REGION"
-gcloud scheduler jobs run composer-load-job --location "$REGION"
-gcloud scheduler jobs run composer-trigger-job --location "$REGION"
+gcloud scheduler jobs run bp-composer-create-job --location "$REGION"
+gcloud scheduler jobs run bp-composer-load-job --location "$REGION"
+gcloud scheduler jobs run bp-composer-trigger-job --location "$REGION"
 ```
 
 #### Updating Snapshot
@@ -387,7 +387,9 @@ Example:
 `gs://$ALLOWED_SNAPSHOT_PREFIX/baseline-20260409-185402/<project-id>_<region>_bp-composer-ephemeral_2026-04-09T17-59-17`
 
 ```bash
-gcloud scheduler jobs update http composer-load-job \
+gcloud scheduler jobs update http bp-composer-load-job \
+  --location "$REGION" \
+  --project "$PROJECT_ID" \
   --message-body "{\"snapshot_path\":\"gs://new-snapshot\"}"
 ```
 
