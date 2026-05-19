@@ -10,7 +10,7 @@ class WriteToElasticsearchDoFn(beam.DoFn):
 
     def __init__(self, index, project_name):
         super().__init__()
-        self.index = f"{datetime.today().strftime("%Y-%m-%d")}_{index}"
+        self.index = f"{datetime.today().strftime('%Y-%m-%d')}_{index}"
         self.project_name = project_name
         self.es = None
         self.actions = None

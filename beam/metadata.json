@@ -25,6 +25,15 @@
       "regexes": [
         "(^erga$|^dtol$|^asg$|^gbdp$)"
       ]
+    },
+    {
+      "name": "annotation_path",
+      "label": "Annotation input path",
+      "helpText": "Optional. GCS path to the annotation JSONL file produced by the annotation importer. Example: gs://prj-ext-prod-biodiv-data-in-aegis/annotations/PRJEB80366.jsonl",
+      "isOptional": true,
+      "regexes": [
+        "^gs:\\/\\/[^\\n\\r]+$"
+      ]
     }
   ]
 }

@@ -13,6 +13,8 @@ def aegis_etl(
     output_path: str,
     project_name: str,
     pipeline_options_args: list[str],
+    annotation_path: str | None = None,
+    skip_alias_update: bool = False,
 ) -> beam.Pipeline:
 
     pipeline_options = PipelineOptions(pipeline_options_args)
@@ -35,14 +37,36 @@ def aegis_etl(
         | "Group by tax_id" >> beam.GroupByKey()
     )
 
+    # Optional annotation enrichment.
+    # When annotation_path is given, read the annotation JSONL and pass it to
+    # the transform as a dict side input keyed by gca_accession. When it is not
+    # given, transform_kwargs stays empty and the pipeline behaves exactly as
+    # it did before annotation support was added.
+    transform_kwargs = {}
+    if annotation_path:
+        annotations = (
+            pipeline
+            | "Read annotation JSONL" >> beam.io.ReadFromText(annotation_path)
+            | "Parse annotation JSON" >> beam.Map(lambda line: json.loads(line))
+            | "Key annotations by accession" >> beam.Map(
+                lambda record: (record["gca_accession"], record)
+            )
+        )
+        transform_kwargs["annotations"] = beam.pvalue.AsDict(annotations)
+
     aegis_records = (
         samples_by_taxid
-        | "Transform to AEGIS format" >> beam.Map(transform_to_aegis_format)
+        | "Transform to AEGIS format" >> beam.Map(
+            transform_to_aegis_format, **transform_kwargs
+        )
         | "Filter None" >> beam.Filter(lambda x: x is not None)
     )
 
     aegis_records | "Write to Elasticsearch" >> beam.ParDo(
-        WriteToAegisElasticsearchDoFn(project_name=project_name)
+        WriteToAegisElasticsearchDoFn(
+            project_name=project_name,
+            skip_alias_update=skip_alias_update,
+        )
     )
 
     return pipeline
@@ -51,9 +75,10 @@ def aegis_etl(
 
 class WriteToAegisElasticsearchDoFn(beam.DoFn):
 
-    def __init__(self, project_name):
+    def __init__(self, project_name, skip_alias_update=False):
         super().__init__()
         self.project_name = project_name
+        self.skip_alias_update = skip_alias_update
         self.index = f"{datetime.today().strftime('%Y-%m-%d')}_data_portal"
         self.es = None
         self.actions = None
@@ -90,16 +115,27 @@ class WriteToAegisElasticsearchDoFn(beam.DoFn):
             self.es.indices.put_mapping(index=self.index, **mappings)
 
         # alias
-        alias_name = "data_portal"
-        if self.es.indices.exists_alias(name=alias_name):
-            old_indices = self.es.indices.get_alias(name=alias_name)
-            actions = []
-            for old_index in old_indices:
-                actions.append({"remove": {"index": old_index, "alias": alias_name}})
-            actions.append({"add": {"index": self.index, "alias": alias_name}})
-            self.es.indices.update_aliases(body={"actions": actions})
+        # When skip_alias_update is set (e.g. a local test run), the index is
+        # still created and filled, but the live "data_portal" alias is left
+        # pointing at whatever index it currently points at -- so AEGIS users
+        # keep seeing the existing data.
+        if self.skip_alias_update:
+            print(
+                f"skip_alias_update is set: index '{self.index}' will be "
+                f"created and filled, but the 'data_portal' alias will NOT "
+                f"be changed."
+            )
         else:
-            self.es.indices.put_alias(index=self.index, name=alias_name)
+            alias_name = "data_portal"
+            if self.es.indices.exists_alias(name=alias_name):
+                old_indices = self.es.indices.get_alias(name=alias_name)
+                actions = []
+                for old_index in old_indices:
+                    actions.append({"remove": {"index": old_index, "alias": alias_name}})
+                actions.append({"add": {"index": self.index, "alias": alias_name}})
+                self.es.indices.update_aliases(body={"actions": actions})
+            else:
+                self.es.indices.put_alias(index=self.index, name=alias_name)
 
     def start_bundle(self):
         self.actions = []

@@ -1,4 +1,4 @@
-def transform_to_aegis_format(tax_id_and_samples):
+def transform_to_aegis_format(tax_id_and_samples, annotations=None):
 
     tax_id, samples_iterable = tax_id_and_samples
     samples = list(samples_iterable)
@@ -29,7 +29,7 @@ def transform_to_aegis_format(tax_id_and_samples):
             all_assemblies.extend(sample["assemblies"])
 
     aegis_record["rawData"] = all_experiments
-    aegis_record["assemblies"] = all_assemblies
+    aegis_record["assemblies"] = enrich_assemblies(all_assemblies, annotations)
 
     # status fields
     aegis_record["bioSamplesStatus"] = "Done"  # if we have samples, biosamples is done
@@ -121,3 +121,47 @@ def calculate_status_order(current_status):
     }
 
     return status_map.get(current_status, 1)
+
+
+def enrich_assemblies(assemblies, annotations):
+    """Attach genebuild annotation status and metrics to each assembly.
+
+    `annotations` is a dict keyed by gca_accession (e.g. "GCA_964606135.1"),
+    supplied by the pipeline's annotation side input. The join key for each
+    assembly is built as f"{accession}.{version}" to match that form.
+
+    When `annotations` is None or empty (no annotation file was provided to the
+    pipeline), assemblies are returned unchanged, so the output is identical to
+    the pre-annotation pipeline. Assemblies with no matching annotation are also
+    left untouched.
+    """
+    if not annotations:
+        return assemblies
+
+    enriched = []
+    for assembly in assemblies:
+        accession = assembly.get("accession", "")
+        version = assembly.get("version", "")
+        key = f"{accession}.{version}" if accession and version else accession
+
+        annotation = annotations.get(key)
+        if annotation:
+            # build a new dict rather than mutating the grouped input value
+            assembly = {
+                **assembly,
+                "annotation": {
+                    "status": annotation.get("gb_status"),
+                    "method": annotation.get("annotation_method"),
+                    "source": annotation.get("annotation_source"),
+                    "dateStarted": annotation.get("date_started"),
+                    "dateStatusUpdate": annotation.get("date_status_update"),
+                    "lastGenebuildUpdate": annotation.get("last_genebuild_update"),
+                    "releaseDate": annotation.get("release_date"),
+                    "releaseType": annotation.get("release_type"),
+                    "metrics": annotation.get("metrics", {}),
+                },
+            }
+
+        enriched.append(assembly)
+
+    return enriched
