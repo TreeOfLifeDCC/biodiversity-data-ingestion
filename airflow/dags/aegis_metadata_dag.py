@@ -46,11 +46,10 @@ def aegis_metadata_ingestion():
     bucket_name = aegis_config["bucket_name"]
 
     metadata_task = get_aegis_metadata(study_id, bucket_name)
-    beam_task = start_aegis_beam(bucket_name)
-
-
+    beam_task = trigger_aegis_beam_pipeline(bucket_name)
     # collect metadata first, then trigger beam
     metadata_task >> beam_task
+
 
 
 aegis_metadata_ingestion()

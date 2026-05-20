@@ -51,6 +51,7 @@ def start_aegis_beam(bucket_name):
                 "input_path": f"gs://{bucket_name}/*jsonl",
                 "output_path": f"gs://{bucket_name}",
                 "project_name": "aegis",
+                "annotation_path": f"gs://{bucket_name}/annotations/PRJEB80366.jsonl",
             },
             "environment": {
                 "tempLocation": "gs://dataflow-staging-europe-west2-153439618737/tmp",
