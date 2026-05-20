@@ -74,7 +74,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
         parse_data_records(aggr_var, records_data)
 
     # collect metadata from the BioSamples
-    if project_tag in ["ASG", "DTOL", "ERGA"]:
+    if project_tag in ["AEGIS", "ASG", "DTOL", "ERGA"]:
         first_url = (
             f"{biosamples_root_url}?size=200&filter="
             f"attr%3Aproject%20name%3A{project_tag}"
@@ -83,7 +83,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
         sleep(0.1)
         while "_embedded" in samples_response:
             for sample in samples_response["_embedded"]["samples"]:
-                sample["project_name"] = project_tag
+                sample["project_tag"] = project_tag
                 samples[sample["accession"]] = sample
             if "next" in samples_response["_links"]:
                 samples_response = requests.get(
@@ -103,7 +103,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
         "analyses": analyses_aggr,
     }.items():
         join_metadata_and_data(
-            record_type, agg_name, project_name, samples, biosamples_root_url
+            record_type, agg_name, project_tag, samples, biosamples_root_url
         )
 
     # check for missing child -> parent relationship records
@@ -138,7 +138,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
                     print(f"json decode error for {host_sample_id}")
                     continue
     for sample_id, record in additional_samples.items():
-        record["project_name"] = project_tag
+        record["project_tag"] = project_tag
         samples[sample_id] = record
 
     return samples
@@ -159,7 +159,7 @@ def parse_data_records(aggr_var: defaultdict[Any, list], records_data: dict) -> 
 def join_metadata_and_data(
     records_type: str,
     records_data: dict,
-    project_name: str,
+    project_tag: str,
     samples: dict[str, dict],
     biosamples_root_url: str,
 ) -> None:
@@ -168,7 +168,7 @@ def join_metadata_and_data(
         value: record)
     :param records_type: can be of type experiment or assemblies
     :param records_data: experiments and assemblies from ENA
-    :param project_name: name of the project to import
+    :param project_tag: BioSamples filter tag for the project (e.g. "AEGIS")
     :param samples: existing samples data
     :param biosamples_root_url: biosamples root url
 
@@ -189,11 +189,11 @@ def join_metadata_and_data(
                     if response["status"] == 403:
                         continue
                     samples[sample_id] = response
-                    samples[sample_id]["project_name"] = project_name
+                    samples[sample_id]["project_tag"] = project_tag
                     samples[sample_id][records_type] = data
                 except requests.exceptions.JSONDecodeError:
                     continue
             else:
                 samples[sample_id].setdefault(records_type, [])
                 samples[sample_id][records_type].extend(data)
-                samples[sample_id]["project_name"] = project_name
+                samples[sample_id]["project_tag"] = project_tag
