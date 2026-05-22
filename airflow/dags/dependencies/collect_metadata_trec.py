@@ -28,27 +28,22 @@ def main(project_tag: str) -> dict[str, dict]:
 
     # collect metadata from the BioSamples
     if project_tag == "Traversing European Coastlines (TREC) expedition":
-        first_url = (
-            f"{biosamples_root_url}?size=200&filter="
-            f"attr%3Aproject%3A{project_tag}"
-        )
-        samples_response = requests.get(first_url, timeout=3600).json()
+        samples_response = requests.get(
+            biosamples_root_url,
+            params={"size": 200, "text": project_tag},
+            timeout=3600,
+        ).json()
         sleep(0.1)
         while "_embedded" in samples_response:
             for sample in samples_response["_embedded"]["samples"]:
                 # tag samples with the project for downstream processing
                 sample["project_name"] = project_tag
                 samples[sample["accession"]] = sample
-            if "next" in samples_response["_links"]:
-                samples_response = requests.get(
-                    samples_response["_links"]["next"]["href"], timeout=3600
-                ).json()
-                sleep(0.1)
-            else:
-                samples_response = requests.get(
-                    samples_response["_links"]["last"]["href"], timeout=3600
-                ).json()
-                sleep(0.1)
+            next_url = samples_response.get("_links", {}).get("next", {}).get("href")
+            if not next_url:
+                break
+            samples_response = requests.get(next_url, timeout=3600).json()
+            sleep(0.1)
 
     columns_mapping = {
         "collection date": "collection_date",
@@ -96,5 +91,4 @@ def main(project_tag: str) -> dict[str, dict]:
         samples[sample_id] = item
 
     return samples
-
 

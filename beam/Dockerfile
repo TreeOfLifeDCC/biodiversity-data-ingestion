@@ -28,10 +28,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # available via import statements and installs necessary dependencies.
 # Editable installation allows picking up later changes to the pipeline code
 # for example during local experimentation within the container.
-RUN pip install -e .
+RUN pip install .
 
 # For more informaiton, see: https://cloud.google.com/dataflow/docs/guides/templates/configuring-flex-templates
 ENV FLEX_TEMPLATE_PYTHON_PY_FILE="${WORKDIR}/main.py"
+ENV FLEX_TEMPLATE_PYTHON_SETUP_FILE="${WORKDIR}/setup.py"
+ENV PYTHONPATH="${WORKDIR}/src"
 
 # Because this image will be used as custom sdk container image, and it already
 # installs the dependencies from the requirements.txt, we can omit

@@ -18,14 +18,18 @@ def get_trec_metadata(project_tag: str, bucket_name: str) -> None:
     Fetch TREC metadata from BioSamples and write it to GCS as JSONL.
     """
     from dependencies import collect_metadata_trec
+    from google.cloud import storage
 
     metadata = collect_metadata_trec.main(project_tag)
-    base = ObjectStoragePath(f"gcs://{bucket_name}", conn_id="google_cloud_default")
-    base.mkdir(exist_ok=True)
-    path = base / f"{project_tag}.jsonl"
-    with path.open("w") as file:
-        for _, record in metadata.items():
-            file.write(f"{json.dumps(record, default=str)}\n")
+    client = storage.Client(project="prj-ext-prod-biodiv-data-in")
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(f"{project_tag}.jsonl")
+
+    content = ""
+    for _, record in metadata.items():
+        content += f"{json.dumps(record, default=str)}\n"
+
+    blob.upload_from_string(content, content_type="application/json")
 
 
 @task
@@ -134,4 +138,3 @@ def trec_metadata_ingestion():
 
 
 trec_metadata_ingestion()
-

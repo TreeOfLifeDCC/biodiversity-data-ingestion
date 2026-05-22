@@ -1,9 +1,18 @@
-"""A setuptools configuration file stub for the pipeline package.
+"""Setup file for the biodiversity-data-ingestion Beam package."""
 
-Note that the package is completely defined by pyproject.toml.
-This file is optional. It is only necessary if you must use the --setup_file
-pipeline option or the FLEX_TEMPLATE_PYTHON_SETUP_FILE configuration option.
-"""
+from setuptools import find_packages, setup
 
-import setuptools
-setuptools.setup()
+
+setup(
+    name="biodiversity-data-ingestion",
+    version="1.0.0",
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
+    include_package_data=True,
+    install_requires=[
+        "apache-beam[gcp]==2.62.0",
+        "lxml",
+        "elasticsearch==8.17.1",
+        "google-cloud-secret-manager",
+    ],
+)
