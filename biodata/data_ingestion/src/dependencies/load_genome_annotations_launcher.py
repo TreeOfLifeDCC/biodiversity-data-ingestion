@@ -13,7 +13,7 @@ def run(argv):
     parser.add_argument("--output", required=True, help="Output path for bq_stats.jsonl")
     parser.add_argument("--bq_table", required=True, help="BigQuery table name: project.dataset.table")
     parser.add_argument("--bq_schema", required=True, help="Path to BigQuery schema JSON file")
-    parser.add_argument("--temp_location", required=True, help="GCS temp path for BigQuery file loads")
+    parser.add_argument("--temp_location", required=False, help="GCS temp path for BigQuery file loads")
 
     args, beam_args = parser.parse_known_args(argv)
 
