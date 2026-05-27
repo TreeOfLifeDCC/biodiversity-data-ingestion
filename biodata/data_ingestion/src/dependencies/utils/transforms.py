@@ -1317,9 +1317,6 @@ class LookupGTFUrlBatchFn(DoFn):
             ann = ann_list[-1]
             gtf_url = ann.get("annotation", {}).get("GTF")
 
-            if not gtf_url:
-                continue
-
             lookup[tax_id] = {
                 "accession": ann.get("accession"),
                 "species": ann.get("species"),
