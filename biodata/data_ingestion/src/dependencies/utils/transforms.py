@@ -1265,6 +1265,12 @@ class LookupGTFUrlBatchFn(DoFn):
         self.missing = Metrics.counter(self.__class__, "gtf_missing")
         self.batches = Metrics.counter(self.__class__, "batches_processed")
 
+    @staticmethod
+    def _normalize_tax_id_str(tax_id: Any) -> Optional[str]:
+        if tax_id is None:
+            return None
+        return str(tax_id)
+
     def setup(self):
         self.es = Elasticsearch(
             hosts=self.host,
@@ -1300,7 +1306,9 @@ class LookupGTFUrlBatchFn(DoFn):
 
         for hit in hits:
             src = hit.get("_source", {})
-            tax_id = src.get("tax_id")
+            tax_id = self._normalize_tax_id_str(src.get("tax_id"))
+            if not tax_id:
+                continue
             ann_list = src.get("annotation") or []
 
             if not ann_list:
@@ -1321,9 +1329,11 @@ class LookupGTFUrlBatchFn(DoFn):
 
         # Emit results preserving input
         for element in elements:
-            tax_id = element.get("tax_id")
-            if type(tax_id) == str:  # Safeguard against strings in tax_id
-                tax_id = int(tax_id)
+            tax_id = self._normalize_tax_id_str(element.get("tax_id"))
+
+            if not tax_id:
+                self.missing.inc()
+                continue
 
             if tax_id in lookup:
                 self.found.inc()
