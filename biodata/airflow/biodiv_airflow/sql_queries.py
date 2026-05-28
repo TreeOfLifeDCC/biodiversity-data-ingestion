@@ -204,6 +204,7 @@ def build_bq_genome_annotations_summary_sql(
 
     Aggregates gene and transcript biotype counts and percentages by accession.
     Assumes run_accessions contains only new accessions, so INSERT is enough.
+    DELETE was added for retry-safe execution.
     """
     accessions_to_run = ", ".join(f"'{accession}'" for accession in run_accessions)
 
