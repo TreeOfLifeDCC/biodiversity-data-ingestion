@@ -6,6 +6,12 @@ from google.cloud.orchestration.airflow import service_v1
 from google.cloud.orchestration.airflow.service_v1.types import DeleteEnvironmentRequest
 
 
+def _require_env(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise ValueError(f"Missing required env var: {name}")
+    return value
+
 @functions_framework.http
 def delete_composer_environment(http_request):
     """
@@ -14,9 +20,9 @@ def delete_composer_environment(http_request):
       PROJECT_ID, REGION, COMPOSER_ENV_NAME
     """
 
-    project_id = os.environ["PROJECT_ID"]
-    region = os.environ["REGION"]
-    env_name = os.environ["COMPOSER_ENV_NAME"]
+    project_id = _require_env("PROJECT_ID")
+    region = _require_env("REGION")
+    env_name = _require_env("COMPOSER_ENV_NAME")
 
     env_resource = f"projects/{project_id}/locations/{region}/environments/{env_name}"
 
