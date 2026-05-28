@@ -1,6 +1,7 @@
 import os
 import functions_framework
 
+from google.api_core.exceptions import FailedPrecondition, NotFound, PermissionDenied
 from google.cloud.orchestration.airflow import service_v1
 from google.cloud.orchestration.airflow.service_v1.types import LoadSnapshotRequest
 
@@ -36,17 +37,31 @@ def load_composer_snapshot(request):
     )
 
     client = service_v1.EnvironmentsClient()
-    operation = client.load_snapshot(
-        request=LoadSnapshotRequest(
-            environment=environment,
-            snapshot_path=snapshot_path,
-        )
-    )
 
-    return (
-        f"load requested\n"
-        f"environment: {environment}\n"
-        f"snapshot_path: {snapshot_path}\n"
-        f"operation: {operation.operation.name}\n",
-        200,
-    )
+    try:
+        operation = client.load_snapshot(
+            request=LoadSnapshotRequest(
+                environment=environment,
+                snapshot_path=snapshot_path,
+            )
+        )
+
+        return (
+            f"load requested\n"
+            f"environment: {environment}\n"
+            f"snapshot_path: {snapshot_path}\n"
+            f"operation: {operation.operation.name}\n",
+            200,
+        )
+
+    except NotFound as e:
+        return (f"environment or snapshot not found: {environment}\n{e}\n", 404)
+
+    except PermissionDenied as e:
+        return (f"permission denied loading snapshot: {environment}\n{e}\n", 403)
+
+    except FailedPrecondition as e:
+        return (
+            f"load not applied due to state (FailedPrecondition): {environment}\n{e}\n",
+            200,
+        )
