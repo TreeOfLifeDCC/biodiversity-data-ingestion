@@ -184,45 +184,59 @@ The BigQuery gate table is: `<project>.<dataset>.bp_log_taxonomy`
 
 The gate computes: `new_tax_ids = Elasticsearch tax IDs - BigQuery logged tax IDs`
 Then compares the count against: `new_tax_ids >= min_new_species_threshold`
-If the threshold is met: the DAG continues to `run_taxonmy`, 
-if not met it skips the pipeline chain and writes: `_SKIPPED` marker, 
-bofere proceding to delete the environment.
+If the threshold is met, the DAG continues to `run_taxonomy`.
+If not met, it skips the pipeline chain, writes the `_SKIPPED` marker,
+and proceeds to delete the environment.
 
 ### Dataflow Pipeline Chain
 
-If the gate passes, the DAG launches the following Dataflow Flex Template jobs in order:
+If the gate passes, the DAG launches the following Dataflow Flex Template jobs with these dependencies:
 
 ```text
 run_taxonomy
     ↓
 mark_taxonomy_success
-    ↓
-run_occurrences
-    ↓
-mark_occurrences_success
-    ↓
-run_cleaning_occs
-    ↓
-mark_cleaning_occs_success
-    ↓
-run_spatial_annotation
-    ↓
-mark_spatial_annotation_success
-    ↓
-run_range_estimation
-    ↓
-mark_range_estimation_success
-    ↓
-run_data_provenance
-    ↓
-mark_data_provenance_success
-    ↓
-run_biodiv_warehouse_integration_bq
-    ↓
-mark_pipelines_completion_success
-    ↓
-delete_composer_env
+    ├──────────────────────────────────────────────┐
+    │                                              │
+    ↓                                              ↓
+run_occurrences                    run_ingest_genome_annotation_to_gcs
+    ↓                                              ↓
+mark_occurrences_success           mark_ingest_genome_annotation_to_gcs_success
+    ↓                                              ↓
+run_cleaning_occs                  run_load_genome_annotation_to_bq
+    ↓                                              ↓
+mark_cleaning_occs_success         mark_load_genome_annotation_to_bq_success
+    ↓                                              │
+run_spatial_annotation                             │
+    ↓                                              │
+mark_spatial_annotation_success                    │
+    ↓                                              │
+run_range_estimation                               │
+    ↓                                              │
+mark_range_estimation_success                      │
+    ↓                                              │
+run_data_provenance                                │
+    ↓                                              │
+mark_data_provenance_success                       │
+    │                                              │
+    └──────────────────────┬───────────────────────┘
+                           ↓
+          build_genome_biotype_summary_sql
+                           ↓
+          run_genome_biotype_summary_bq
+                           ↓
+          run_biodiv_warehouse_integration_bq
+                           ↓
+          mark_run_bq_integration_success
+                           ↓
+          mark_pipelines_completion_success
+                           ↓
+          delete_composer_env
 ```
+After `mark_taxonomy_success`, the occurrence/provenance branch and genome annotation 
+branch run in parallel; the BigQuery summary and warehouse integration tasks wait for 
+both branches to complete.
+
 ### Dataflow Template Specifics
 
 The templates are defined in: `biodata/data_ingestion`.
@@ -330,7 +344,33 @@ Main outputs:
 <project>.<dataset>.bp_provenance_metadata
 ```
 
-#### 7. Biodiv Warehouse Integration
+#### 7. Genome Annotation Ingestion
+
+Tasks:
+- `run_ingest_genome_annotation_to_gcs`
+- `run_load_genome_annotation_to_bq`
+- `build_genome_biotype_summary_sql`
+- `run_genome_biotype_summary_bq`
+
+Purpose:
+- looks up GTF URLs for validated taxonomy records
+- downloads available GTF files
+- writes download and BigQuery ingestion manifests
+- loads parsed genome annotations into BigQuery
+- builds genome biotype summaries for the current run
+
+Main outputs:
+
+```text
+<run_prefix>/gtf_manifest/gtf_gcs_paths.jsonl
+<run_prefix>/gtf_manifest/download_status.jsonl
+<run_prefix>/gtf_manifest/bq_ingestion.jsonl
+<run_prefix>/gtf_manifest/bq_invalid_accessions.jsonl
+<project>.<dataset>.bp_genome_annotations
+<project>.<dataset>.bp_genome_biotype_summary
+```
+
+#### 8. Biodiv Warehouse Integration
 Task `run_biodiv_warehouse_integration_bq`.
 
 Purpose:
@@ -343,7 +383,7 @@ in rows identified by genomes accession IDs, 1 row per reference genome.
 Main output:
 `<project>.<dataset>.bp_integ_genome_biodiv_annotations`
 
-#### 8. Success markers
+#### 9. Success markers
 The DAG writes success markers to indicate pipeline completion.
 After each Dataflow stage, the DAG writes a marker file to GCS.
 
@@ -360,6 +400,9 @@ Examples:
 <run_prefix>/spatial/_SUCCESS
 <run_prefix>/range_estimates/_SUCCESS
 <run_prefix>/data_provenance/_SUCCESS
+<run_prefix>/gtf_manifest/_SUCCESS_INGEST_TO_GCS
+<run_prefix>/gtf_manifest/_SUCCESS_LOAD_TO_BQ
+<run_prefix>/gtf_manifest/_SUCCESS_BQ_INTEGRATION
 <run_prefix>/_SUCCESS
 ```
 If the gate skips execution, the DAG writes: `<run_prefix>/_SKIPPED` marker.
@@ -368,8 +411,8 @@ The pipelines are audited in search for species missed among runs.
 These species are backfilled by manual runs of the pipeline. In these cases,
 the run/pipeline marker is `<run_prefix>/_BACKFILLED_MANUAL`
 
-#### 9. Delete Composer Environment step
-The DAG calls the Composer delete service to delete the Composer environment" `delete_composer_env`
+#### 10. Delete Composer Environment step
+The DAG calls the Composer delete service using task `delete_composer_env`.
 
 It calls: `call_delete_service()`
 
