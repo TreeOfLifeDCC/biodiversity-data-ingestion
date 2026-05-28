@@ -1,5 +1,5 @@
 import json
-
+import re
 import requests
 import time
 
@@ -10,6 +10,10 @@ from google.cloud import storage
 
 from biodiv_airflow.config import BiodivConfig
 from biodiv_airflow.sql_queries import build_bq_genome_annotations_summary_sql
+
+
+# Constants
+ACCESSION_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
 def split_gcs_uri(gcs_uri: str) -> tuple[str, str]:
@@ -309,14 +313,15 @@ def build_bq_genome_annotations_summary_sql_from_manifest(
     bucket_and_blob = manifest_uri.removeprefix("gs://")
     bucket_name, blob_name = bucket_and_blob.split("/", 1)
 
-    client = storage.Client()
+    client = storage.Client(project=cfg.gcp_project)
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
 
     accessions: set[str] = set()
+    invalid_accessions: list[dict] = []
 
     with blob.open("r") as file_obj:
-        for line in file_obj:
+        for line_number, line in enumerate(file_obj, start=1):
             line = line.strip()
             if not line:
                 continue
@@ -327,8 +332,31 @@ def build_bq_genome_annotations_summary_sql_from_manifest(
                 continue
 
             accession = record.get("accession")
-            if accession:
+            if not accession:
+                continue
+
+            if ACCESSION_RE.fullmatch(accession):
                 accessions.add(accession)
+            else:
+                invalid_accessions.append({
+                    "accession": accession,
+                    "reason": "INVALID_ACCESSION_FORMAT",
+                    "source_manifest": manifest_uri,
+                    "line_number": line_number,
+                })
+
+    if invalid_accessions:
+        invalid_blob_name = blob_name.rsplit("/", 1)[0] + "/bq_invalid_accessions.jsonl"
+        invalid_blob = bucket.blob(invalid_blob_name)
+
+        with invalid_blob.open("w") as invalid_file:
+            for invalid_record in invalid_accessions:
+                invalid_file.write(json.dumps(invalid_record) + "\n")
+
+        print(
+            f"Skipped {len(invalid_accessions)} invalid accession(s). "
+            f"Wrote manifest to gs://{bucket_name}/{invalid_blob_name}"
+        )
 
     if not accessions:
         raise ValueError(f"No new accessions found in {manifest_uri}")
