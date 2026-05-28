@@ -97,12 +97,7 @@ def start_composer_environment(http_request):
     )
 
     env_config = EnvironmentConfig(
-        workloads_config=WorkloadsConfig(
-            scheduler=scheduler,
-            web_server=web_server,
-            worker=worker,
-            triggerer=triggerer,
-        ),
+        workloads_config=workloads,
         software_config=SoftwareConfig(
             image_version=image_version,
         ),
