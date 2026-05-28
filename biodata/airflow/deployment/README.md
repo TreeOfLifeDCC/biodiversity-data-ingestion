@@ -131,12 +131,13 @@ gcloud run deploy bp-composer-create \
   --region "$REGION" \         
   --service-account "$COMPOSER_SA" \
   --no-allow-unauthenticated \
-  --set-env-vars PROJECT_ID="$PROJECT_ID",
-    REGION="$REGION",
-    COMPOSER_ENV_NAME="$ENV_NAME",
-    NODE_SERVICE_ACCOUNT="$COMP_SA",
-    IMAGE_VERSION="composer-3-airflow-2.10.5-build.32",
-    COMPOSER_BUCKET="$BUCKET"
+  --set-env-vars \
+    PROJECT_ID="$PROJECT_ID", \
+    REGION="$REGION", \
+    COMPOSER_ENV_NAME="$ENV_NAME", \
+    NODE_SERVICE_ACCOUNT="$COMP_SA", \
+    IMAGE_VERSION="composer-3-airflow-2.10.5-build.32", \
+    COMPOSER_BUCKET="$COMPOSER_BUCKET"
 ```
 
 **Load service**
@@ -167,7 +168,7 @@ gcloud run deploy bp-composer-create \
 
 ```bash
 gcloud run deploy bp-composer-trigger \
-  --source ./trigger-service \
+  --source ./deployment/trigger-service \
   --project "$PROJECT_ID" \
   --region "$REGION" \
   --service-account "$COMPOSER_SA" \
@@ -191,11 +192,14 @@ gcloud run deploy bp-composer-delete \
   --service-account "$COMP_SA" \
   --no-allow-unauthenticated \
   --region "$REGION" \
+  --project "$PROJECT_ID" \
   --set-env-vars \
     PROJECT_ID="$PROJECT_ID", \
     REGION="$REGION", \
     COMPOSER_ENV_NAME="$ENV_NAME"
 ```
+
+**NOTE:** Redeploying an existing service with the same command creates a new Cloud Run revision. Keep the existing `--set-env-vars` values unless intentionally changing service configuration.
 
 ### 3. Create Boostrap Composer Environment
 
@@ -317,7 +321,7 @@ in order to complete the ephimeral lifecycle setup.
 export SNAPSHOT_PATH="$ALLOWED_SNAPSHOT_PREFIX/baseline-$(date +%Y%m%d-%H%M%S)"
 
 gcloud composer environments snapshots save "$ENV_NAME" \
-  --location "$REGION" \        
+  --location "$REGION" \
   --project "$PROJECT_ID" \
   --snapshot-location "$SNAPSHOT_PATH"
 ```
