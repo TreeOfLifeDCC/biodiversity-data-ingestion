@@ -22,7 +22,6 @@ from biodiv_airflow.helpers import (
 from biodiv_airflow import dataflow_specs
 
 from biodiv_airflow.sql_queries import (
-    build_bq_genome_annotations_summary_sql,
     build_bq_warehouse_integration_sql,
 )
 
