@@ -2,6 +2,7 @@ import os
 
 import functions_framework
 import google.auth
+from google.api_core.exceptions import NotFound
 from google.auth.transport.requests import AuthorizedSession
 from google.cloud.orchestration.airflow import service_v1
 
@@ -34,8 +35,15 @@ def trigger_composer_dag(request):
     env_resource = f"projects/{project_id}/locations/{region}/environments/{env_name}"
 
     client = service_v1.EnvironmentsClient()
-    env = client.get_environment(name=env_resource)
-    web_server_url = env.config.airflow_uri.rstrip("/")
+
+    try:
+        env = client.get_environment(name=env_resource)
+    except NotFound:
+        return (f"environment not found: {env_resource}\n", 404)
+
+    web_server_url = (env.config.airflow_uri or "").rstrip("/")
+    if not web_server_url:
+        return (f"environment has no Airflow webserver URI: {env_resource}\n", 503)
 
     credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     authed_session = AuthorizedSession(credentials)
