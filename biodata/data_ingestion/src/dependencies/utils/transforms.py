@@ -1,3 +1,4 @@
+import gzip
 import logging
 import tempfile
 import geopandas as gpd
@@ -7,6 +8,7 @@ import numpy as np
 import pyproj
 import rasterio
 import time
+import requests
 
 from elasticsearch import Elasticsearch
 from apache_beam import DoFn, pvalue
@@ -20,7 +22,7 @@ from shapely.ops import transform
 from rasterio.mask import mask
 from requests.exceptions import RequestException
 from typing import Any, Dict, Iterable, List, Optional
-from dependencies.utils.helpers import sanitize_species_name, fetch_spatial_file_to_local, extract_species_name
+from dependencies.utils.helpers import sanitize_species_name, fetch_spatial_file_to_local, extract_species_name, parse_annotations
 
 logger = logging.getLogger(__name__)
 
@@ -1053,3 +1055,285 @@ class FetchProvenanceByTaxIdBatchFn(DoFn):
                 "Ensembl_browser": latest.get("view_in_browser"),
                 "gbif_url": f"https://www.gbif.org/species/{gbif_key}" if gbif_key else None,
             }
+
+
+class DownloadGTFDoFn(DoFn):
+
+    def __init__(self, gtf_staging_path: str):
+        self.gtf_staging_path = gtf_staging_path.rstrip("/")
+
+        self.files_started = Metrics.counter(self.__class__, "gtf_files_started")
+        self.files_downloaded = Metrics.counter(self.__class__, "gtf_files_downloaded")
+        self.files_skipped = Metrics.counter(self.__class__, "gtf_files_skipped")
+        self.files_failed = Metrics.counter(self.__class__, "gtf_files_failed")
+
+    def _build_gcs_path(self, accession: str) -> str:
+        return f"{self.gtf_staging_path}/{accession}.gtf.gz"
+
+    def _exists(self, path: str) -> bool:
+        try:
+            match = FileSystems.match([path])
+            return len(match[0].metadata_list) > 0
+        except Exception:
+            return False
+
+    def process(self, element: dict):
+        accession = element.get("accession")
+        gtf_url = element.get("gtf_url")
+        species = element.get("species")
+        tax_id = element.get("tax_id")
+
+        self.files_started.inc()
+
+        # --- Case 1: missing URL ---
+        if not accession or not gtf_url:
+            self.files_failed.inc()
+
+            yield pvalue.TaggedOutput(
+                "file_stats",
+                {
+                    "accession": accession,
+                    "species": species,
+                    "tax_id": tax_id,
+                    "status": "NO_URL",
+                    "gtf_url": gtf_url,
+                    "gtf_path": None,
+                },
+            )
+            return
+
+        gcs_path = self._build_gcs_path(accession)
+
+        # --- Case 2: already exists ---
+        if self._exists(gcs_path):
+            self.files_skipped.inc()
+
+            yield pvalue.TaggedOutput(
+                "file_stats",
+                {
+                    "accession": accession,
+                    "species": species,
+                    "tax_id": tax_id,
+                    "status": "ALREADY_EXISTS",
+                    "gtf_url": gtf_url,
+                    "gtf_path": gcs_path,
+                },
+            )
+            return
+
+        # --- Case 3: download ---
+        response = None
+        try:
+            for attempt in range(3):
+                try:
+                    response = requests.get(
+                        gtf_url,
+                        stream=True,
+                        timeout=60,
+                        headers={"User-Agent": "biodiv-pipeline/1.0"},
+                    )
+                    response.raise_for_status()
+                    break
+                except Exception:
+                    response = None
+                    if attempt < 2:
+                        time.sleep(2 ** attempt)
+
+            if response is None:
+                raise RuntimeError("Download failed after retries")
+
+            # --- write directly to GCS ---
+            with FileSystems.create(gcs_path) as f:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+
+            self.files_downloaded.inc()
+
+            yield {
+                "accession": accession,
+                "species": species,
+                "tax_id": tax_id,
+                "gtf_path": gcs_path,
+                "gtf_url": gtf_url,
+            }
+
+            yield pvalue.TaggedOutput(
+                "file_stats",
+                {
+                    "accession": accession,
+                    "species": species,
+                    "tax_id": tax_id,
+                    "status": "DOWNLOADED",
+                    "gtf_url": gtf_url,
+                    "gtf_path": gcs_path,
+                },
+            )
+
+        except Exception:
+            self.files_failed.inc()
+
+            yield pvalue.TaggedOutput(
+                "file_stats",
+                {
+                    "accession": accession,
+                    "species": species,
+                    "tax_id": tax_id,
+                    "status": "FAILED",
+                    "gtf_url": gtf_url,
+                    "gtf_path": gcs_path,
+                },
+            )
+
+        finally:
+            if response:
+                response.close()
+
+
+class ParseGTFDoFn(DoFn):
+    """
+    Reads GTF files from GCS, parses them, and emits structured rows.
+    Also emits minimal file-level status for observability.
+    """
+
+    def process(self, element: dict):
+        accession = element["accession"]
+        gtf_path = element["gtf_path"]
+
+        status = "SUCCESS"
+        emitted_any = False
+
+        logging.info(f"Parsing {gtf_path}")
+
+        try:
+            with FileSystems.open(gtf_path) as f:
+                with gzip.GzipFile(fileobj=f) as gz:
+
+                    for raw_line in gz:
+                        try:
+                            line = raw_line.decode("utf-8").strip()
+
+                            if not line or line.startswith("#"):
+                                continue
+
+                            parts = line.split("\t")
+                            if len(parts) < 9:
+                                continue
+
+                            record = {
+                                "accession": accession,
+                                "record_type": parts[2],
+                                "info": parts[8],
+                            }
+
+                            parsed = parse_annotations(record)
+
+                            if parsed:
+                                emitted_any = True
+                                yield parsed
+
+                        except Exception:
+                            # skip malformed lines
+                            continue
+
+            if not emitted_any:
+                status = "EMPTY"
+
+        except Exception:
+            status = "FAILED"
+
+        # --- minimal observability ---
+        yield pvalue.TaggedOutput(
+            "file_stats",
+            {
+                "accession": accession,
+                "gtf_path": gtf_path,
+                "status": status,
+            },
+        )
+
+
+class LookupGTFUrlBatchFn(DoFn):
+
+    def __init__(self, host, user, password, index):
+        self.host = host
+        self.user = user
+        self.password = password
+        self.index = index
+
+        self.found = Metrics.counter(self.__class__, "gtf_found")
+        self.missing = Metrics.counter(self.__class__, "gtf_missing")
+        self.batches = Metrics.counter(self.__class__, "batches_processed")
+
+    @staticmethod
+    def _normalize_tax_id_str(tax_id: Any) -> Optional[str]:
+        if tax_id is None:
+            return None
+        return str(tax_id)
+
+    def setup(self):
+        self.es = Elasticsearch(
+            hosts=self.host,
+            basic_auth=(self.user, self.password),
+            request_timeout=30,
+            retry_on_timeout=True,
+            max_retries=3,
+        )
+
+    def process(self, elements: list[dict]):
+
+        if not elements:
+            return
+
+        self.batches.inc()
+
+        tax_ids = [e["tax_id"] for e in elements if e.get("tax_id")]
+
+        if not tax_ids:
+            return
+
+        response = self.es.search(
+            index=self.index,
+            size=len(tax_ids),
+            query={"terms": {"tax_id": tax_ids}},
+            _source=["tax_id", "annotation.accession", "annotation.species", "annotation.annotation.GTF"],
+        )
+
+        hits = response.get("hits", {}).get("hits", [])
+
+        # Build lookup: tax_id → record
+        lookup = {}
+
+        for hit in hits:
+            src = hit.get("_source", {})
+            tax_id = self._normalize_tax_id_str(src.get("tax_id"))
+            if not tax_id:
+                continue
+            ann_list = src.get("annotation") or []
+
+            if not ann_list:
+                continue
+
+            ann = ann_list[-1]
+            gtf_url = ann.get("annotation", {}).get("GTF")
+
+            lookup[tax_id] = {
+                "accession": ann.get("accession"),
+                "species": ann.get("species"),
+                "tax_id": tax_id,
+                "gtf_url": gtf_url,
+            }
+
+        # Emit results preserving input
+        for element in elements:
+            tax_id = self._normalize_tax_id_str(element.get("tax_id"))
+
+            if not tax_id:
+                self.missing.inc()
+                continue
+
+            if tax_id in lookup:
+                self.found.inc()
+                yield lookup[tax_id]
+            else:
+                self.missing.inc()
