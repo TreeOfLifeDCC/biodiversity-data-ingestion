@@ -1,0 +1,72 @@
+{
+  "name": "ensembl-stats-pipeline",
+  "description": "Retrieves Ensembl genome statistics for accession records and writes JSONL and/or BigQuery output",
+  "parameters": [
+    {
+      "name": "sdk_container_image",
+      "label": "Worker SDK Container Image",
+      "helpText": "Container image URI used for the Python SDK harness on Dataflow workers. This must contain your packaged pipelines and dependencies.",
+      "isOptional": true
+    },
+    {
+      "name": "experiments",
+      "label": "Experiments",
+      "helpText": "Comma-separated Dataflow experiments. For custom containers, Runner v2 is required. Use 'use_runner_v2' for batch.",
+      "defaultValue": "use_runner_v2",
+      "isOptional": true
+    },
+    {
+      "name": "pipeline",
+      "label": "Pipeline Identifier",
+      "helpText": "Which pipeline to launch. Use 'ensembl_stats' for this template.",
+      "defaultValue": "ensembl_stats"
+    },
+    {
+      "name": "accessions_file",
+      "label": "Accessions File",
+      "helpText": "Path to the newline-delimited taxonomy/accession JSONL input file.",
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "output_jsonl",
+      "label": "Stats Output Path (GCS)",
+      "helpText": "Optional GCS path prefix for successful JSONL stats output.",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "errors_jsonl",
+      "label": "Errors Output Path (GCS)",
+      "helpText": "Optional GCS path prefix for JSONL error output.",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "bq_table",
+      "label": "BigQuery Table",
+      "helpText": "Optional BigQuery table destination (project.dataset.table).",
+      "isOptional": true
+    },
+    {
+      "name": "bq_schema",
+      "label": "BigQuery Schema Path",
+      "helpText": "GCS path to the BigQuery schema JSON.",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "temp_location",
+      "label": "GCS Temp Path",
+      "helpText": "Temporary GCS path used for BigQuery file loads.",
+      "isOptional": true,
+      "regexes": ["^gs:\/\/[^[:space:]]+$"]
+    },
+    {
+      "name": "ensembl_api_delay_seconds",
+      "label": "Ensembl API Delay Seconds",
+      "helpText": "Seconds to sleep before each Ensembl API request per worker.",
+      "defaultValue": "0.0",
+      "isOptional": true
+    }
+  ]
+}
