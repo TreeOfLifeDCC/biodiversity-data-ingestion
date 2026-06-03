@@ -1366,7 +1366,7 @@ class RetrieveGenomeStatsDoFn(DoFn):
             self._throttle()
             stats = retrieve_genome_stats_by_id(genome_id)
         except EnsemblApiError as exc:
-            yield beam.pvalue.TaggedOutput(
+            yield pvalue.TaggedOutput(
                 'errors',
                 {
                     'genome_accession': accession,
@@ -1411,7 +1411,7 @@ class RetrieveEnaAssemblyStatsDoFn(DoFn):
             self._throttle()
             yield retrieve_ena_assembly_stats(accession)
         except EnaApiError as exc:
-            yield beam.pvalue.TaggedOutput(
+            yield pvalue.TaggedOutput(
                 'errors',
                 {
                     'accession': accession,
