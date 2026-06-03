@@ -28,12 +28,14 @@ class BiodivConfig:
     # --------- ENA throttling ---------
     ena_sleep_s: str
 
+    # --------- Ensembl throttling ---------
+    ensembl_sleep_s: str
+
     # --------- GBIF throttling ---------
     gbif_limit: str
     gbif_sleep_s: str
     gbif_retry_delay_s: str
     gbif_max_retries: str
-
 
     # --------- BigQuery ----------
     bq_dataset: str
@@ -54,6 +56,8 @@ class BiodivConfig:
     data_provenance_template: str
     ingest_genome_annotations_template: str
     load_genome_annotations_template: str
+    ena_stats_template: str
+    ensembl_stats_template: str
 
     # Artifacts
     taxonomy_validated: str
@@ -66,6 +70,12 @@ class BiodivConfig:
     # GTF staging dir and manifests
     gtf_manifest: str
     gtf_staging_path: str
+
+    # ENA manifest
+    ena_manifest: str
+
+    # Ensembl manifest
+    ensembl_manifest: str
 
     # Input data
     continental_land_shapefile: str
@@ -124,6 +134,7 @@ def load_config() -> BiodivConfig:
     elastic_size = Variable.get("elasticsearch_size", default_var="100")
 
     ena_sleep_s = Variable.get("ena_sleep_s", default_var="0.25")
+    ensembl_sleep_s = Variable.get("ensembl_sleep_s", default_var="0.25")
 
     gbif_limit = Variable.get("gbif_limit", default_var="300")
     gbif_sleep_s = Variable.get("sleep_seconds", default_var="0.25")
@@ -151,6 +162,8 @@ def load_config() -> BiodivConfig:
     data_provenance_template = f"{flex_base}/flex_data_provenance.json"
     ingest_genome_annotations_template = f"{flex_base}/flex_ingest_genome_annotations.json"
     load_genome_annotations_template = f"{flex_base}/flex_load_genome_annotations.json"
+    ena_stats_template = f"{flex_base}/flex_ena_stats.json"
+    ensembl_stats_template = f"{flex_base}/flex_ensembl_stats.json"
 
     # Artifacts
     taxonomy_validated = f"{run_prefix}/taxonomy/taxonomy_validated.jsonl"
@@ -159,6 +172,8 @@ def load_config() -> BiodivConfig:
     spatial_annotations = f"{run_prefix}/spatial"
     range_estimates = f"{run_prefix}/range_estimates"
     data_provenance = f"{run_prefix}/data_provenance/metadata_urls"
+    ena_manifest = f"{run_prefix}/ena"
+    ensembl_manifest = f"{run_prefix}/ensembl"
 
     # GTF staging dir and manifests
     gtf_manifest = f"{run_prefix}/gtf_manifest"
@@ -192,11 +207,12 @@ def load_config() -> BiodivConfig:
         elastic_password=elastic_password,
         elastic_pages=elastic_pages,
         elastic_size=elastic_size,
-        ena_sleep_s = ena_sleep_s,
-        gbif_limit = gbif_limit,
-        gbif_sleep_s = gbif_sleep_s,
-        gbif_retry_delay_s = gbif_retry_delay_s,
-        gbif_max_retries = gbif_max_retries,
+        ena_sleep_s=ena_sleep_s,
+        ensembl_sleep_s=ensembl_sleep_s,
+        gbif_limit=gbif_limit,
+        gbif_sleep_s=gbif_sleep_s,
+        gbif_retry_delay_s=gbif_retry_delay_s,
+        gbif_max_retries=gbif_max_retries,
         bq_dataset=bq_dataset,
         beam_min_batch_size=beam_min_batch_size,
         beam_max_batch_size=beam_max_batch_size,
@@ -209,8 +225,12 @@ def load_config() -> BiodivConfig:
         data_provenance_template=data_provenance_template,
         ingest_genome_annotations_template=ingest_genome_annotations_template,
         load_genome_annotations_template=load_genome_annotations_template,
+        ena_stats_template=ena_stats_template,
+        ensembl_stats_template=ensembl_stats_template,
         taxonomy_validated=taxonomy_validated,
         gtf_manifest=gtf_manifest,
+        ena_manifest=ena_manifest,
+        ensembl_manifest=ensembl_manifest,
         gtf_staging_path=gtf_staging_path,
         raw_occurrences=raw_occurrences,
         cleaned_occurrences=cleaned_occurrences,
