@@ -14,7 +14,7 @@ def build_bq_warehouse_integration_sql(cfg: BiodivConfig) -> str:
     """
     query = f"""
         CREATE OR REPLACE TABLE `{cfg.gcp_project}.{cfg.bq_dataset}.bp_integ_genome_biodiv_annotations` AS
-        
+
         WITH genome_annotations_count AS (
           SELECT g.*
           FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_genome_biotype_summary` AS g
@@ -24,19 +24,15 @@ def build_bq_warehouse_integration_sql(cfg: BiodivConfig) -> str:
           ) AS t
             ON g.accession = t.accession
         ),
-        -- ---------
-        /*
-        Generating a struct with gene biotypes as columns
-        */
-        
+
         matrix_gene_biotype AS (
           WITH unpacked_biotypes AS (
             SELECT
               accession,
               gb.gene_biotype,
               gb.gene_biotype_percentage
-          FROM genome_annotations_count AS gf,
-          UNNEST(gf.gene_biotypes) AS gb
+            FROM genome_annotations_count AS gf,
+            UNNEST(gf.gene_biotypes) AS gb
           )
           SELECT *
           FROM unpacked_biotypes
@@ -59,48 +55,46 @@ def build_bq_warehouse_integration_sql(cfg: BiodivConfig) -> str:
             )
           )
         ),
-        
+
         gene_matrix_struct AS (
           SELECT
             accession,
-              STRUCT(
-                IG_C_gene, IG_D_gene, IG_J_gene, IG_V_gene,
-                Mt_rRNA, Mt_tRNA,
-                TR_C_gene, TR_J_gene, TR_V_gene,
-                Y_RNA,
-                antisense,
-                lncRNA,
-                miRNA,
-                misc_RNA,
-                processed_pseudogene, protein_coding, pseudogene,
-                rRNA, ribozyme, scaRNA, snRNA, snoRNA,
-                tRNA, transcribed_processed_pseudogene, transcribed_unprocessed_pseudogene,
-                unitary_pseudogene, unprocessed_pseudogene,
-                vault_RNA
-              ) AS gbiotype_matrix
+            STRUCT(
+              IG_C_gene, IG_D_gene, IG_J_gene, IG_V_gene,
+              Mt_rRNA, Mt_tRNA,
+              TR_C_gene, TR_J_gene, TR_V_gene,
+              Y_RNA,
+              antisense,
+              lncRNA,
+              miRNA,
+              misc_RNA,
+              processed_pseudogene, protein_coding, pseudogene,
+              rRNA, ribozyme, scaRNA, snRNA, snoRNA,
+              tRNA, transcribed_processed_pseudogene, transcribed_unprocessed_pseudogene,
+              unitary_pseudogene, unprocessed_pseudogene,
+              vault_RNA
+            ) AS gbiotype_matrix
           FROM matrix_gene_biotype
         ),
-        -- --------
-        
+
         transformed_taxonomy AS (
           SELECT
             accession,
-              STRUCT( 
-                tax.kingdom,
-                tax.phylum,
-                tax.class,
-                tax.order,
-                tax.family,
-                tax.genus,
-                tax.species,
-                tax.tax_id,
-                tax.gbif_usageKey,
-                tax.gbif_status
-              ) AS taxonomy
-          FROM
-            `{cfg.gcp_project}.{cfg.bq_dataset}.bp_taxonomy_validated` AS tax
+            STRUCT(
+              tax.kingdom,
+              tax.phylum,
+              tax.class,
+              tax.order,
+              tax.family,
+              tax.genus,
+              tax.species,
+              tax.tax_id,
+              tax.gbif_usageKey,
+              tax.gbif_status
+            ) AS taxonomy
+          FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_taxonomy_validated` AS tax
         ),
-        
+
         transformed_gbif AS (
           SELECT
             accession,
@@ -111,7 +105,7 @@ def build_bq_warehouse_integration_sql(cfg: BiodivConfig) -> str:
                 gb.geodeticDatum,
                 gb.coordinateUncertaintyInMeters,
                 gb.eventDate,
-                CAST(gb.elevation AS FLOAT64) AS elevation, -- Ad hoc: delete for the next run of the pipeline.
+                CAST(gb.elevation AS FLOAT64) AS elevation,
                 gb.countryCode,
                 gb.iucnRedListCategory,
                 gb.gadm,
@@ -125,56 +119,94 @@ def build_bq_warehouse_integration_sql(cfg: BiodivConfig) -> str:
           FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_gbif_occurrences` AS gb
           GROUP BY accession
         ),
-        
+
         spatial_annotations AS (
           SELECT
             * EXCEPT(species, tax_id)
           FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_spatial_annotations`
         ),
+
         range_sizes AS (
-            SELECT
-              * EXCEPT(species)
-            FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_species_range_estimates`
+          SELECT
+            * EXCEPT(species)
+          FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_species_range_estimates`
         ),
+
         altitudinal_profile AS (
           SELECT
             accession,
             ROUND(AVG(CAST(elevation AS FLOAT64)), 2) AS mean_elevation,
             MIN(CAST(elevation AS FLOAT64)) AS min_elevation,
             MAX(CAST(elevation AS FLOAT64)) AS max_elevation,
-            ROUND(APPROX_QUANTILES(CAST(elevation AS FLOAT64), 2)[OFFSET(1)], 2) AS median_elevation--,
-            --ARRAY_AGG(CAST(elevation AS FLOAT64)) AS vals
+            ROUND(APPROX_QUANTILES(CAST(elevation AS FLOAT64), 2)[OFFSET(1)], 2) AS median_elevation
           FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_gbif_occurrences`
           WHERE elevation IS NOT NULL
           GROUP BY accession
         ),
-        -- ------
-        /*
-        Adding URLs for GTF files, Ensembl & GBIF
-        */
-        
+
         metadata_struct AS (
-         SELECT
+          SELECT
             accession,
-              STRUCT(
-                bp.Biodiversity_portal,
-                bp.Ensembl_browser,
-                bp.GTF,
-                bp.gbif_url AS GBIF
+            STRUCT(
+              bp.Biodiversity_portal,
+              bp.Ensembl_browser,
+              bp.GTF,
+              bp.gbif_url AS GBIF
             ) AS meta_urls
           FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_provenance_metadata` AS bp
+        ),
+
+        ena_stats_struct AS (
+          SELECT
+            accession,
+            STRUCT(
+              assembly_level,
+              ungapped_length,
+              scaffold_n50,
+              scaffold_count,
+              contig_n50,
+              contig_count,
+              coverage,
+              spanned_gaps,
+              unspanned_gaps,
+              contig_l50,
+              scaffold_l50,
+              contig_n75,
+              contig_n90,
+              scaffold_n75,
+              scaffold_n90,
+              replicon_count,
+              non_chromosome_replicon_count
+            ) AS ena_stats
+          FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_ena_stats`
+        ),
+
+        ensembl_stats_struct AS (
+          SELECT
+            accession,
+            STRUCT(
+              assembly_stats,
+              coding_stats,
+              variation_stats,
+              non_coding_stats,
+              pseudogene_stats,
+              homology_stats,
+              regulation_stats
+            ) AS ensembl_stats
+          FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_ensembl_stats`
         )
-        
-        -- ------
+
         SELECT
-           gc.*,
-           t.* EXCEPT(accession),
-           g.* EXCEPT(accession),
-           s.* EXCEPT(accession),
-           r.* EXCEPT(accession),
-           alt.* EXCEPT(accession),
-           gmax.* EXCEPT(accession),
-           urls.* EXCEPT(accession)
+          gc.*,
+          t.* EXCEPT(accession),
+          g.* EXCEPT(accession),
+          s.* EXCEPT(accession),
+          r.* EXCEPT(accession),
+          alt.* EXCEPT(accession),
+          gmax.* EXCEPT(accession),
+          urls.* EXCEPT(accession),
+          ena.* EXCEPT(accession),
+          ens.* EXCEPT(accession)
         FROM genome_annotations_count AS gc
         LEFT JOIN transformed_taxonomy AS t
           ON gc.accession = t.accession
@@ -184,13 +216,17 @@ def build_bq_warehouse_integration_sql(cfg: BiodivConfig) -> str:
           ON gc.accession = s.accession
         LEFT JOIN range_sizes AS r
           ON gc.accession = r.accession
-        LEFT JOIN altitudinal_profile as alt
+        LEFT JOIN altitudinal_profile AS alt
           ON gc.accession = alt.accession
         LEFT JOIN gene_matrix_struct AS gmax
           ON gc.accession = gmax.accession
         LEFT JOIN metadata_struct AS urls
           ON gc.accession = urls.accession
-        """
+        LEFT JOIN ena_stats_struct AS ena
+          ON gc.accession = ena.accession
+        LEFT JOIN ensembl_stats_struct AS ens
+          ON gc.accession = ens.accession
+    """
 
     return query
 
