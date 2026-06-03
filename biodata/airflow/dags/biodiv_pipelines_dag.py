@@ -291,7 +291,9 @@ with DAG(
     (
         [
             mark_data_provenance_success,
-            mark_load_genome_annotation_to_bq_success
+            mark_load_genome_annotation_to_bq_success,
+            mark_ena_stats_success,
+            mark_ensembl_stats_success
         ]
         >> build_genome_biotype_summary_sql
         >> run_genome_biotype_summary_bq
@@ -303,7 +305,5 @@ with DAG(
     [
         mark_data_provenance_success,
         mark_load_genome_annotation_to_bq_success,
-        mark_ena_stats_success,
-        mark_ensembl_stats_success,
         mark_run_bq_integration_success,
     ] >> mark_pipelines_completion_success
