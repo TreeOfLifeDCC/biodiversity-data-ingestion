@@ -1,6 +1,7 @@
 # Biodiversity pipelines
 
-Apache Beam batch pipelines for taxonomy validation, occurrence retrieval, cleaning, spatial annotation, range estimation, and provenance export.
+Apache Beam batch pipelines for taxonomy validation, occurrence retrieval, cleaning, spatial annotation, range estimation,
+provenance export, genome annotation ingestion, ENA assembly statistics, and Ensembl genome statistics.
 
 ## Quick start
 
@@ -64,15 +65,20 @@ All the occurrence records are downloaded from GBIF using the [pygbif](https://p
 ├── Dockerfile
 ├── README.md
 ├── main.py
-├── metadata_cleaning_occs.json
-├── metadata_data_provenance.json
-├── metadata_occurrences.json
-├── metadata_range_estimation.json
-├── metadata_spatial_annotation.json
-├── metadata_taxonomy.json
 ├── pyproject.toml
 ├── requirements.txt
 ├── setup.py
+├── flex_templates
+│   ├── metadata_cleaning_occs.json
+│   ├── metadata_data_provenance.json
+│   ├── metadata_ena_stats.json
+│   ├── metadata_ensembl_stats.json
+│   ├── metadata_ingest_genome_annotations.json
+│   ├── metadata_load_genome_annotations.json
+│   ├── metadata_occurrences.json
+│   ├── metadata_range_estimation.json
+│   ├── metadata_spatial_annotation.json
+│   └── metadata_taxonomy.json
 └── src
     └── dependencies
         ├── __init__.py
@@ -83,7 +89,15 @@ All the occurrence records are downloaded from GBIF using the [pygbif](https://p
         ├── climate_summary_pipeline.py
         ├── data_provenance_launcher.py
         ├── data_provenance_pipeline.py
+        ├── ena_stats_launcher.py
+        ├── ena_stats_pipeline.py
+        ├── ensembl_stats_launcher.py
+        ├── ensembl_stats_pipeline.py
+        ├── ingest_genome_annotations_launcher.py
+        ├── ingest_genome_annotations_pipeline.py
         ├── launcher.py
+        ├── load_genome_annotations_launcher.py
+        ├── load_genome_annotations_pipeline.py
         ├── occurrences_launcher.py
         ├── occurrences_pipeline.py
         ├── range_estimation_launcher.py
@@ -94,7 +108,10 @@ All the occurrence records are downloaded from GBIF using the [pygbif](https://p
         ├── taxonomy_pipeline.py
         └── utils
             ├── __init__.py
+            ├── bq_ena_stats_schema.json
+            ├── bq_ensembl_stats_schema.json
             ├── bq_gbif_occurrences_schema.json
+            ├── bq_genome_annotations_schema.json
             ├── bq_metadata_url_schema.json
             ├── bq_range_estimates_schema.json
             ├── bq_spatial_annotation_schema.json
@@ -113,6 +130,10 @@ All the occurrence records are downloaded from GBIF using the [pygbif](https://p
 - `spatial_annotation_pipeline.py`
 - `range_estimation_pipeline.py`
 - `data_provenance_pipeline.py`
+- `ingest_genome_annotations_pipeline.py`
+- `load_genome_annotations_pipeline.py`
+- `ena_stats_pipeline.py`
+- `ensembl_stats_pipeline.py`
 
 #### Main pipeline entry points for Dataflow flex templates:
 
@@ -131,6 +152,15 @@ Recommended execution order:
 4. Spatial annotation
 5. Range estimation
 6. Data provenance
+7. Genome annotation ingestion to GCS
+8. Genome annotation loading to BigQuery
+9. ENA assembly stats
+10. Ensembl genome stats
+11. BigQuery warehouse integration, orchestrated by Airflow
+
+After taxonomy validation, the occurrence/provenance branch, genome annotation branch,
+ENA stats pipeline, and Ensembl stats pipeline can run in parallel. The Airflow DAG
+waits for the BigQuery-producing stages to finish before running warehouse integration.
 
 ### Pipeline artifacts and outputs "folder" structure
 
@@ -141,6 +171,10 @@ Recommended execution order:
 │   ├── climate/
 │   └── spatial_processing/
 ├── out
+│    ├── ena/
+│    ├── ensembl/
+│    ├── gtf_files/
+│    ├── gtf_manifest/
 │    ├── metadata/
 │    ├── occurrences/
 │    ├── spatial/
@@ -160,7 +194,7 @@ Recommended execution order:
 Each pipeline follows the same local pattern:
 
 ```bash
-python -m biodiv_pipelines.<pipeline> --arg1 value1 --arg2 value2
+python -m dependencies.<pipeline> --arg1 value1 --arg2 value2
 ```
 
 - Beam runner options can also be passed after the pipeline arguments when needed.
@@ -178,7 +212,7 @@ export BQ_DATASET=<your-bq-dataset>
 ### Taxonomy
 
 ```bash
-python -m biodiv_pipelines.taxonomy_pipeline \
+python -m dependencies.taxonomy_pipeline \
   --host <host> \
   --user <user> \
   --password <password> \
@@ -187,7 +221,7 @@ python -m biodiv_pipelines.taxonomy_pipeline \
   --size 10 \
   --pages 1 \
   --sleep 0.25 \
-  --bq_table "${PROJECT_ID}.${BQ_DATASET}.bq_taxonomy_validated" \
+  --bq_table "${PROJECT_ID}.${BQ_DATASET}.bp_taxonomy_validated" \
   --bq_schema "${BUCKET}/schemas/bq_taxonomy_schema.json" \
   --bq_gate_table "${PROJECT_ID}.${BQ_DATASET}.bp_log_taxonomy" \
   --temp_location "${BUCKET}/temp" \
@@ -215,7 +249,7 @@ out/taxonomy/
 ### Occurrences
 
 ```bash
-python -m biodiv_pipelines.occurrences_pipeline \
+python -m dependencies.occurrences_pipeline \
   --validated_input "${BUCKET}/out/taxonomy/taxonomy_validated.jsonl" \
   --output_dir "${BUCKET}/out/occurrences/raw" \
   --limit 10 \
@@ -244,7 +278,7 @@ out/occurrences/
 ### Cleaning
 
 ```bash
-python -m biodiv_pipelines.cleaning_occs_pipeline \
+python -m dependencies.cleaning_occs_pipeline \
   --input_glob "${BUCKET}/out/occurrences/occ_*.jsonl" \
   --output_dir "${BUCKET}/out/occurrences/clean" \
   --land_shapefile "${BUCKET}/data/spatial_processing/ne_10m_land/ne_10m_land.shp" \
@@ -272,7 +306,6 @@ Filter raw occurrence records by removing invalid coordinates, centroids, points
 
 **Expected output:**
 ```text
-```text
 out/occurrences/clean/
 ├── occ_<species_name>.jsonl
 └── all_species.jsonl    # only if --output_consolidated is provided
@@ -285,7 +318,7 @@ out/occurrences/clean/
 ### Spatial annotation
 
 ```bash
-python -m biodiv_pipelines.spatial_annotation_pipeline \
+python -m dependencies.spatial_annotation_pipeline \
   --input_occs "${BUCKET}/out/occurrences_clean/occ_*.jsonl" \
   --climate_dir "${BUCKET}/data/climate" \
   --biogeo_vector "${BUCKET}/data/bioregions/Ecoregions2017.shp" \
@@ -306,7 +339,7 @@ Use cleaned occurrence records to extract climate and area classification inform
 - BigQuery output only when `--bq_summary_table`, `--bq_schema`, and `--temp_location` are provided.
 - All input and output files can be local or GCS paths.
 
-**Expected outpur:**
+**Expected output:**
 ```text
 out/spatial/
 ├── annotated.jsonl
@@ -324,7 +357,7 @@ This pipeline uses the `range_km2` field in the occurrence records to estimate t
 It does not produce a text file output like the other pipelines. Instead, it writes the results to a BigQuery table.
 
 ```bash
-python range_estimation_pipeline.py \
+python -m dependencies.range_estimation_pipeline \
   --input_glob "${BUCKET}/out/occurrences/clean/occ_*.jsonl" \
   --bq_table "${PROJECT_ID}.${BQ_DATASET}.bp_species_range_estimates" \
   --bq_schema "${BUCKET}/schemas/bq_range_estimates_schema.json" \
@@ -341,8 +374,7 @@ python range_estimation_pipeline.py \
 ### Data provenance
 
 ```bash
-python -m biodiv_pipelines.data_provenance_pipeline \
-  --taxonomy_path "${BUCKET}/out/taxonomy_validated.jsonl" \
+python -m dependencies.data_provenance_pipeline \
   --host <host> \
   --user <user> \
   --password <password> \
@@ -370,6 +402,106 @@ out/metadata/
 ```
 - One row per species with source URLs and identifiers, including Biodiversity Portal, GTF, Ensembl browser, and GBIF links.
 
+### Genome annotation ingestion
+
+This pipeline looks up GTF URLs for validated taxonomy/accession records and downloads available GTF files to GCS.
+
+```bash
+python -m dependencies.ingest_genome_annotations_pipeline \
+  --taxonomy_path "${BUCKET}/out/taxonomy/taxonomy_validated.jsonl" \
+  --host <host> \
+  --user <user> \
+  --password <password> \
+  --index data_portal \
+  --manifest_path "${BUCKET}/out/gtf_manifest" \
+  --gtf_staging_path "${BUCKET}/out/gtf_files" \
+  --project "${PROJECT_ID}" \
+  --runner DirectRunner
+```
+**Supports:**
+- `--manifest_path` and `--gtf_staging_path` are paths to GCS directories.
+- All input and output files can be local or GCS paths.
+- The pipeline will download GTF files to the staging directory and create a manifest file with the download status and GCS paths.
+
+**Expected output:**
+```text
+out/gtf_manifest/
+├── gtf_gcs_paths.jsonl
+└── download_status.jsonl
+```
+
+### Genome annotation loading
+
+This pipeline parses downloaded GTF files and writes genome annotation rows to BigQuery.
+
+```bash
+python -m dependencies.load_genome_annotations_pipeline \
+  --gtf_path "${BUCKET}/out/gtf_manifest/gtf_gcs_paths.jsonl" \
+  --output "${BUCKET}/out/gtf_manifest" \
+  --bq_table "${PROJECT_ID}.${BQ_DATASET}.bp_genome_annotations" \
+  --bq_schema "${BUCKET}/schemas/bq_genome_annotations_schema.json" \
+  --temp_location "${BUCKET}/temp" \
+  --project "${PROJECT_ID}" \
+  --runner DirectRunner
+```
+**Supports:**
+- `--gtf_path` is a path to a JSONL file containing GCS paths.
+- `--output` is a path to a directory where the manifest file `bq_ingestion.jsonl` will be written.
+
+**Expected output:**
+```text
+out/gtf_manifest/
+└── bq_ingestion.jsonl
+```
+
+### ENA and Ensembl stats
+
+These pipelines read validated taxonomy/accession records, retrieve assembly quality metrics and annotations summaries, write JSONL outputs and error manifests, and load results into BigQuery.
+
+**ENA stats**
+
+```bash
+python -m dependencies.ena_stats_pipeline \
+  --accessions_file "${BUCKET}/out/taxonomy/taxonomy_validated.jsonl" \
+  --output_jsonl "${BUCKET}/out/ena/ena_stats" \
+  --errors_jsonl "${BUCKET}/out/ena/ena_errors" \
+  --bq_table "${PROJECT_ID}.${BQ_DATASET}.bp_ena_stats" \
+  --bq_schema "${BUCKET}/schemas/bq_ena_stats_schema.json" \
+  --temp_location "${BUCKET}/temp" \
+  --ena_api_delay_seconds 0.25 \
+  --project "${PROJECT_ID}" \
+  --runner DirectRunner
+```
+
+**Ensembl stats**
+
+```bash
+python -m dependencies.ensembl_stats_pipeline \
+  --accessions_file "${BUCKET}/out/taxonomy/taxonomy_validated.jsonl" \
+  --output_jsonl "${BUCKET}/out/ensembl/ensembl_stats" \
+  --errors_jsonl "${BUCKET}/out/ensembl/ensembl_errors" \
+  --bq_table "${PROJECT_ID}.${BQ_DATASET}.bp_ensembl_stats" \
+  --bq_schema "${BUCKET}/schemas/bq_ensembl_stats_schema.json" \
+  --temp_location "${BUCKET}/temp" \
+  --ensembl_api_delay_seconds 0.25 \
+  --project "${PROJECT_ID}" \
+  --runner DirectRunner
+```
+
+**Expected output**
+```text
+out/ena/
+├── ena_stats.jsonl
+└── ena_errors.jsonl
+
+out/ensembl/
+├── ensembl_stats.jsonl
+└── ensembl_errors.jsonl
+```
+
+**BigQuery tables**
+- `bp_ena_stats`
+- `bp_ensembl_stats`
 
 ## Direct Run on Google Cloud Dataflow
 
@@ -408,7 +540,7 @@ gcloud builds submit . \
 ### 2. Example: Taxonomy pipeline on Dataflow
 
 ```bash
-python -m biodiv_pipelines.taxonomy_pipeline \
+python -m dependencies.taxonomy_pipeline \
   --host <host> \
   --user <user> \
   --password <password> \
@@ -417,7 +549,7 @@ python -m biodiv_pipelines.taxonomy_pipeline \
   --pages 1 \
   --sleep 0.25 \
   --output "${BUCKET}/out/taxonomy/taxonomy" \
-  --bq_table "${PROJECT_ID}.${BQ_DATASET}.bq_taxonomy_validated" \
+  --bq_table "${PROJECT_ID}.${BQ_DATASET}.bp_taxonomy_validated" \
   --bq_schema "${BUCKET}/schemas/bq_taxonomy_schema.json" \
   --bq_gate_table "${PROJECT_ID}.${BQ_DATASET}.bp_log_taxonomy" \
   --runner DataflowRunner \
@@ -521,14 +653,23 @@ gcloud builds submit . --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/biodiversity
 
 ### 4. Create Dataflow Flex template
 
+Each pipeline has a corresponding metadata file which can be found in the `flex_templates` directory.
+
 ```bash
 gcloud dataflow flex-template build gs://${BUCKET}/flex-templates/taxonomy_flex_template.json \
   --image ${REGION}-docker.pkg.dev/${PROJECT_ID}/biodiversity-images/${IMAGE} \
   --sdk-language PYTHON \
-  --metadata-file metadata_taxonomy.json \
+  --metadata-file flex_templates/metadata_taxonomy.json \
   --project=${PROJECT_ID} 
 ```
-**NOTE**: The metadata file is used to specify the parameters that will be passed to the pipeline. This file must be available in your local directory from where you run the command.
+**NOTE**: The metadata file is used to specify the parameters that will be passed to the pipeline. Metadata files are stored in `flex_templates/`.
+
+Examples:
+
+```text
+flex_templates/metadata_taxonomy.json
+flex_templates/metadata_ingest_genome_annotations.json
+```
 
 ### 5. Run template
 
@@ -581,9 +722,7 @@ Same as above for each pipeline but in GCS and BiqQuery.
 
 Main GS bucket: `<your-bucket>`
 
-Main “folder” name: `biodiv-pipelines-prod`
-
-Dev name: `biodive-pipelines-dev`
+Main “folder” name: `biodiv-pipelines-dev`
 
 #### Pipelines "folder" structure: 
 
@@ -594,6 +733,10 @@ biodiv-pipelines-dev/
 │   ├── climate/
 │   └── spatial_processing/
 ├── out
+│    ├── ena/
+│    ├── ensembl/
+│    ├── gtf_files/
+│    ├── gtf_manifest/
 │    ├── metadata/
 │    ├── occurrences/
 │    ├── spatial/
@@ -607,13 +750,13 @@ biodiv-pipelines-dev/
 
 ### GSC object naming structure:
 
-`<your-bucket>/biodiv-pipelines-prod/<any_above>`
+`<your-bucket>/biodiv-pipelines-dev/<any_above>`
 
 **Example:** 
 
-**In:** `<your-bucket>/biodiv-pipelines-prod/data/climate/<any_other_related_object>`
+**In:** `<your-bucket>/biodiv-pipelines-dev/data/climate/<any_other_related_object>`
 
-**Out:** `<your-bucket>/biodiv-pipelines-prod/out/occurrences_clean/occ_.*,jsonl`
+**Out:** `<your-bucket>/biodiv-pipelines-dev/out/occurrences_clean/occ_.*,jsonl`
 
 ### BigQuery Warehouse Tables
 
@@ -626,11 +769,14 @@ biodiv-pipelines-dev/
 
 > **integ:** it stands for data integration in BigQuery via SQL statements. 
 
-1. `bp_taxonomy_validated` → Taxonomic information from ENA and validated with GBIF species service.
-2. `bp_gbif_occurrences` → Cleaned occurrence data. 
-3. `bp_spatial_annotations` → Annotated occurrence data. 
-4. `bp_species_range_estimates` → Range size estimates based on cleaned occurrence data. Convex hull/EOO. 
-5. `bp_provenance_metadata` → URLs from data sources. 
-6. `bp_summ_cleaning` → Summary of cleaning pipeline output. 
-7. `bp_log_taxonomy` → Gate table to decide incremental runs. Logs for all the species that have been processed through the pipeline.
-8. `integ_genome_geatures` → Nested table containing all the tables above in Nested format by genome accession number. 
+1. `bp_taxonomy_validated` → Taxonomic information from ENA, validated with GBIF species services.
+2. `bp_log_taxonomy` → Gate table for incremental runs. Logs species processed through the taxonomy pipeline.
+3. `bp_gbif_occurrences` → Cleaned GBIF occurrence data.
+4. `bp_spatial_annotations` → Spatial and environmental occurrence summaries.
+5. `bp_species_range_estimates` → Range size estimates based on cleaned occurrence data. Convex hull/EOO.
+6. `bp_provenance_metadata` → Source URLs and metadata links.
+7. `bp_genome_annotations` → Parsed genome annotation rows from downloaded GTF files.
+8. `bp_genome_biotype_summary` → Per-accession gene and transcript biotype summaries.
+9. `bp_ena_stats` → ENA assembly quality metrics per accession.
+10. `bp_ensembl_stats` → Ensembl genome annotations summary per accession.
+11. `bp_integ_genome_biodiv_annotations` → Integrated nested warehouse table with one row per genome accession.
