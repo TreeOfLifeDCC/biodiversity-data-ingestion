@@ -67,6 +67,34 @@ with DAG(
         op_kwargs={"gcs_marker_uri": f"{cfg.run_prefix}/taxonomy/_SUCCESS"},
     )
 
+    run_ena_stats = DataflowStartFlexTemplateOperator(
+        task_id="run_ena_stats",
+        project_id=cfg.gcp_project,
+        location=cfg.gcp_region,
+        body=dataflow_specs.ena_stats_body(cfg),
+        wait_until_finished=True,
+    )
+
+    mark_ena_stats_success = PythonOperator(
+        task_id="mark_ena_stats_success",
+        python_callable=write_gcs_marker,
+        op_kwargs={"gcs_marker_uri": f"{cfg.ena_manifest}/_SUCCESS"},
+    )
+
+    run_ensembl_stats = DataflowStartFlexTemplateOperator(
+        task_id="run_ensembl_stats",
+        project_id=cfg.gcp_project,
+        location=cfg.gcp_region,
+        body=dataflow_specs.ensembl_stats_body(cfg),
+        wait_until_finished=True,
+    )
+
+    mark_ensembl_stats_success = PythonOperator(
+        task_id="mark_ensembl_stats_success",
+        python_callable=write_gcs_marker,
+        op_kwargs={"gcs_marker_uri": f"{cfg.ensembl_manifest}/_SUCCESS"},
+    )
+
     run_ingest_genome_annotation_to_gcs = DataflowStartFlexTemplateOperator(
         task_id="run_ingest_genome_annotation_to_gcs",
         project_id=cfg.gcp_project,
@@ -237,6 +265,19 @@ with DAG(
             >> mark_data_provenance_success
     )
 
+    # ENA and Ensembl stats pipelines
+    (
+        mark_taxonomy_success
+        >> run_ena_stats
+        >> mark_ena_stats_success
+    )
+
+    (
+        mark_taxonomy_success
+        >> run_ensembl_stats
+        >> mark_ensembl_stats_success
+    )
+
     # Ingestion of genome annotations to GCS & BQ
     (
         mark_taxonomy_success
@@ -250,7 +291,9 @@ with DAG(
     (
         [
             mark_data_provenance_success,
-            mark_load_genome_annotation_to_bq_success
+            mark_load_genome_annotation_to_bq_success,
+            mark_ena_stats_success,
+            mark_ensembl_stats_success
         ]
         >> build_genome_biotype_summary_sql
         >> run_genome_biotype_summary_bq
@@ -262,5 +305,5 @@ with DAG(
     [
         mark_data_provenance_success,
         mark_load_genome_annotation_to_bq_success,
-        mark_run_bq_integration_success
+        mark_run_bq_integration_success,
     ] >> mark_pipelines_completion_success

@@ -193,3 +193,47 @@ def load_genome_annotations_body(cfg: BiodivConfig) -> dict[str, Any]:
 
         }
     }
+
+
+def ena_stats_body(cfg: BiodivConfig) -> dict[str, Any]:
+    return {
+        "launchParameter": {
+            "jobName": "biodiv-ena-stats-{{ ds_nodash }}-{{ ts_nodash | lower }}",
+            "containerSpecGcsPath": cfg.ena_stats_template,
+            "parameters": {
+                "pipeline": "ena_stats",
+                "accessions_file": cfg.taxonomy_validated,
+                "output_jsonl": f"{cfg.ena_manifest}/ena_stats",
+                "errors_jsonl": f"{cfg.ena_manifest}/ena_errors",
+                "bq_schema": f"{cfg.output_base}/schemas/bq_ena_stats_schema.json",
+                "bq_table": f"{cfg.gcp_project}.{cfg.bq_dataset}.bp_ena_stats",
+                "temp_location": cfg.df_temp_location,
+                "ena_api_delay_seconds": cfg.ena_sleep_s,
+                "sdk_container_image": cfg.sdk_container_image,
+                "experiments": "use_runner_v2",
+            },
+            "environment": _base_environment(cfg, "ena_stats"),
+        }
+    }
+
+
+def ensembl_stats_body(cfg: BiodivConfig) -> dict[str, Any]:
+    return {
+        "launchParameter": {
+            "jobName": "biodiv-ensembl-stats-{{ ds_nodash }}-{{ ts_nodash | lower }}",
+            "containerSpecGcsPath": cfg.ensembl_stats_template,
+            "parameters": {
+                "pipeline": "ensembl_stats",
+                "accessions_file": cfg.taxonomy_validated,
+                "output_jsonl": f"{cfg.ensembl_manifest}/ensembl_stats",
+                "errors_jsonl": f"{cfg.ensembl_manifest}/ensembl_errors",
+                "bq_schema": f"{cfg.output_base}/schemas/bq_ensembl_stats_schema.json",
+                "bq_table": f"{cfg.gcp_project}.{cfg.bq_dataset}.bp_ensembl_stats",
+                "temp_location": cfg.df_temp_location,
+                "ensembl_api_delay_seconds": cfg.ensembl_sleep_s,
+                "sdk_container_image": cfg.sdk_container_image,
+                "experiments": "use_runner_v2",
+            },
+            "environment": _base_environment(cfg, "ensembl_stats"),
+        }
+    }

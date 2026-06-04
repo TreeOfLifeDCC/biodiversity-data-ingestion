@@ -1,9 +1,13 @@
 import json
 import os
 import re
+import requests
+
 from apache_beam.io.filesystems import FileSystems
 from apache_beam.io.gcp.internal.clients import bigquery as bq
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from typing import Any
 
 def sanitize_species_name(species: str) -> str:
     """
@@ -65,6 +69,7 @@ def merge_summary_annotations(grouped):
     climate = (grouped.get("climate") or [{}])[0]
     biogeo = (grouped.get("biogeo") or [{}])[0]
     return {**climate, **biogeo}
+
 
 def convert_dict_to_table_schema(schema_dict_list):
     """
@@ -358,3 +363,334 @@ def filter_new_accessions(element):
     if not groups["existing"]:
         for record in groups["candidates"]:
             yield record
+
+
+# -----------------------------------
+# Helpers for ENA and Ensembl pipelines
+# -----------------------------------
+
+ENSEMBL_REQUEST_TIMEOUT_SECONDS = 30
+ENSEMBL_MAX_REQUEST_ATTEMPTS = 5
+ENSEMBL_DEFAULT_RETRY_AFTER_SECONDS = 10
+ENSEMBL_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+
+ENA_REQUEST_TIMEOUT_SECONDS = 30
+ENA_MAX_REQUEST_ATTEMPTS = 5
+ENA_DEFAULT_RETRY_AFTER_SECONDS = 10
+ENA_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+
+ENA_TAG_TO_KEY = {
+    'ungapped-length': 'ungapped_length',
+    'n50': 'scaffold_n50',
+    'scaffold-count': 'scaffold_count',
+    'count-contig': 'contig_count',
+    'contig-n50': 'contig_n50',
+    'contig-L50': 'contig_l50',
+    'contig-n75': 'contig_n75',
+    'contig-n90': 'contig_n90',
+    'scaf-L50': 'scaffold_l50',
+    'scaf-n75': 'scaffold_n75',
+    'scaf-n90': 'scaffold_n90',
+    'spanned-gaps': 'spanned_gaps',
+    'unspanned-gaps': 'unspanned_gaps',
+    'replicon-count': 'replicon_count',
+    'count-non-chromosome-replicon': 'non_chromosome_replicon_count',
+}
+
+ENA_INTEGER_METRIC_KEYS = {
+    'ungapped_length',
+    'scaffold_n50',
+    'scaffold_count',
+    'contig_n50',
+    'contig_count',
+    'spanned_gaps',
+    'unspanned_gaps',
+    'contig_l50',
+    'scaffold_l50',
+    'contig_n75',
+    'contig_n90',
+    'scaffold_n75',
+    'scaffold_n90',
+    'replicon_count',
+    'non_chromosome_replicon_count',
+}
+
+ENA_ASSEMBLY_METRIC_KEYS = [
+    'assembly_level',
+    'ungapped_length',
+    'scaffold_n50',
+    'scaffold_count',
+    'contig_n50',
+    'contig_count',
+    'coverage',
+    'spanned_gaps',
+    'unspanned_gaps',
+    'contig_l50',
+    'scaffold_l50',
+    'contig_n75',
+    'contig_n90',
+    'scaffold_n75',
+    'scaffold_n90',
+    'replicon_count',
+    'non_chromosome_replicon_count',
+]
+
+
+class EnsemblApiError(RuntimeError):
+    """Raised when the Ensembl API returns an unexpected response."""
+
+
+class EnaApiError(RuntimeError):
+    """Raised when the ENA API returns an unexpected response."""
+
+
+def _request_json(
+    method: str,
+    url: str,
+    *,
+    service_name: str,
+    error_cls: type[RuntimeError],
+    timeout_seconds: int,
+    max_request_attempts: int,
+    default_retry_after_seconds: int,
+    retryable_status_codes: set[int],
+    **kwargs: Any,
+) -> dict[str, Any]:
+    def retry_delay_seconds(
+        attempt: int,
+        response: requests.Response | None = None,
+    ) -> float:
+        if response is not None:
+            retry_after = response.headers.get('Retry-After')
+            if retry_after:
+                return parse_retry_after(retry_after)
+
+        return min(default_retry_after_seconds, attempt * 2)
+
+    def parse_retry_after(retry_after: str) -> float:
+        try:
+            return max(float(retry_after), 0)
+        except ValueError:
+            try:
+                parsed_date = parsedate_to_datetime(retry_after)
+            except (TypeError, ValueError):
+                return default_retry_after_seconds
+
+            return max((parsed_date.timestamp() - time.time()), 0)
+
+    last_response: requests.Response | None = None
+
+    for attempt in range(1, max_request_attempts + 1):
+        try:
+            response = requests.request(
+                method,
+                url,
+                timeout=timeout_seconds,
+                **kwargs,
+            )
+        except requests.RequestException as exc:
+            if attempt == max_request_attempts:
+                raise error_cls(f'{service_name} request failed: {exc}') from exc
+
+            time.sleep(retry_delay_seconds(attempt=attempt))
+            continue
+
+        last_response = response
+
+        if response.status_code in retryable_status_codes:
+            if attempt == max_request_attempts:
+                break
+
+            time.sleep(retry_delay_seconds(attempt=attempt, response=response))
+            continue
+
+        try:
+            response.raise_for_status()
+            payload = response.json()
+        except requests.RequestException as exc:
+            raise error_cls(f'{service_name} request failed: {exc}') from exc
+        except ValueError as exc:
+            raise error_cls(f'{service_name} response was not valid JSON.') from exc
+
+        if not isinstance(payload, dict):
+            raise error_cls(f'{service_name} response JSON was not an object.')
+
+        return payload
+
+    raise error_cls(
+        f'{service_name} request failed after {max_request_attempts} attempts with '
+        f'HTTP {last_response.status_code}: {last_response.text}'
+    )
+
+
+def _request_ensembl_json(method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+    return _request_json(
+        method,
+        url,
+        service_name='Ensembl',
+        error_cls=EnsemblApiError,
+        timeout_seconds=ENSEMBL_REQUEST_TIMEOUT_SECONDS,
+        max_request_attempts=ENSEMBL_MAX_REQUEST_ATTEMPTS,
+        default_retry_after_seconds=ENSEMBL_DEFAULT_RETRY_AFTER_SECONDS,
+        retryable_status_codes=ENSEMBL_RETRYABLE_STATUS_CODES,
+        **kwargs,
+    )
+
+
+def retrieve_genome_id(genome_accession: str) -> str:
+    genome_id_graphql_query = f'''query{{
+      genomes(
+        by_keyword: {{
+          assembly_accession_id:{json.dumps(genome_accession)}
+        }}) 
+      {{
+        genome_id
+      }}
+    }}'''
+
+    payload = _request_ensembl_json(
+        'POST',
+        'https://beta.ensembl.org/data/graphql',
+        json={'query': genome_id_graphql_query},
+    )
+
+    if payload.get('errors'):
+        raise EnsemblApiError(f'Ensembl GraphQL errors: {payload["errors"]}')
+
+    try:
+        data = payload['data']
+        genomes = data['genomes']
+    except (KeyError, TypeError) as exc:
+        raise EnsemblApiError('Ensembl GraphQL response did not include data.genomes.') from exc
+
+    if not isinstance(genomes, list):
+        raise EnsemblApiError('Ensembl GraphQL data.genomes was not a list.')
+
+    if not genomes:
+        raise EnsemblApiError(f'No genome found for accession {genome_accession}.')
+
+    if len(genomes) > 1:
+        raise EnsemblApiError(
+            f'Expected one uuid for accession {genome_accession}, found {len(genomes)}.'
+        )
+
+    genome = genomes[0]
+    if not isinstance(genome, dict):
+        raise EnsemblApiError(f'Genome response was not an object: {genome}')
+
+    genome_id = genome.get('genome_id')
+    if not genome_id:
+        raise EnsemblApiError(f'Genome response did not include genome_id: {genome}')
+
+    return genome_id
+
+
+def retrieve_genome_stats(genome_accession: str) -> dict[str, Any]:
+    genome_id = retrieve_genome_id(genome_accession)
+
+    return retrieve_genome_stats_by_id(genome_id)
+
+
+def retrieve_genome_stats_by_id(genome_id: str) -> dict[str, Any]:
+    ensembl_stats_url = f'https://beta.ensembl.org/api/metadata/genome/{genome_id}/stats'
+
+    return _request_ensembl_json('GET', ensembl_stats_url)
+
+
+def _request_ena_json(method: str, url: str, **kwargs: Any) -> dict[str, Any]:
+    return _request_json(
+        method,
+        url,
+        service_name='ENA',
+        error_cls=EnaApiError,
+        timeout_seconds=ENA_REQUEST_TIMEOUT_SECONDS,
+        max_request_attempts=ENA_MAX_REQUEST_ATTEMPTS,
+        default_retry_after_seconds=ENA_DEFAULT_RETRY_AFTER_SECONDS,
+        retryable_status_codes=ENA_RETRYABLE_STATUS_CODES,
+        **kwargs,
+    )
+
+
+def fetch_ena_assembly(accession: str) -> dict[str, Any]:
+    """Fetch a single ENA assembly summary record for an accession."""
+    payload = _request_ena_json('GET', f'https://www.ebi.ac.uk/ena/browser/api/summary/{accession}')
+
+    summaries = payload.get('summaries')
+    if not isinstance(summaries, list):
+        raise EnaApiError('ENA summary response did not include summaries list.')
+
+    if not summaries:
+        raise EnaApiError(f'No ENA summaries returned for accession {accession}.')
+
+    record = summaries[0]
+    if not isinstance(record, dict):
+        raise EnaApiError(f'ENA summary record was not an object: {record}')
+
+    accession_root = accession.split('.')[0]
+    returned_accession = record.get('accession')
+    if returned_accession not in (None, accession, accession_root):
+        raise EnaApiError(
+            f'ENA returned accession {returned_accession} for requested {accession}.'
+        )
+
+    return record
+
+
+def retrieve_ena_assembly_stats(accession: str) -> dict[str, Any]:
+    """Fetch ENA assembly metrics as a flat BigQuery-ready record."""
+    def _coerce_to_integer(key: str, value: Any) -> int | str | None:
+        if key not in ENA_INTEGER_METRIC_KEYS:
+            return value
+
+        if value in (None, ''):
+            return None
+
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise EnaApiError(
+                f'Could not parse ENA metric {key}={value!r} as integer.'
+            ) from exc
+
+    def _coerce_to_float(key: str, value: Any) -> float | None:
+        if value in (None, ''):
+            return None
+
+        try:
+            return float(value)
+        except (TypeError, ValueError) as exc:
+            raise EnaApiError(
+                f'Could not parse ENA metric {key}={value!r} as float.'
+            ) from exc
+
+    record = fetch_ena_assembly(accession)
+    metrics = {key: None for key in ENA_ASSEMBLY_METRIC_KEYS}
+
+    assembly_level = record.get('assemblyLevel')
+    if isinstance(assembly_level, str):
+        metrics['assembly_level'] = assembly_level.strip().lower()
+    elif assembly_level is not None:
+        metrics['assembly_level'] = assembly_level
+
+    coverage = record.get('assemblyCoverage')
+    metrics['coverage'] = _coerce_to_float('coverage', coverage)
+
+    attributes = record.get('attributes') or []
+    if not isinstance(attributes, list):
+        raise EnaApiError('ENA summary attributes was not a list.')
+
+    for attribute in attributes:
+        if not isinstance(attribute, dict):
+            raise EnaApiError(f'ENA summary attribute was not an object: {attribute}')
+
+        tag = attribute.get('tag')
+        key = ENA_TAG_TO_KEY.get(tag)
+        if key is None:
+            continue
+
+        metrics[key] = _coerce_to_integer(key, attribute.get('value'))
+
+    return {
+        'accession': accession,
+        **metrics,
+    }

@@ -11,7 +11,9 @@ from dependencies import (
     range_estimation_launcher,
     data_provenance_launcher,
     ingest_genome_annotations_launcher,
-    load_genome_annotations_launcher
+    load_genome_annotations_launcher,
+    ena_stats_launcher,
+    ensembl_stats_launcher
 )
 
 
@@ -36,5 +38,9 @@ def launch_pipeline(argv):
         ingest_genome_annotations_launcher.run(remaining_argv)
     elif args.pipeline == "load_genome_annotations":
         load_genome_annotations_launcher.run(remaining_argv)
+    elif args.pipeline == "ena_stats":
+        ena_stats_launcher.run(remaining_argv)
+    elif args.pipeline == "ensembl_stats":
+        ensembl_stats_launcher.run(remaining_argv)
     else:
         raise ValueError(f"Unknown pipeline: {args.pipeline}")
