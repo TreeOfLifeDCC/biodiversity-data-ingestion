@@ -127,11 +127,16 @@ biodiv_sdk_container_image
 elasticsearch_pages
 elasticsearch_size
 ena_sleep_s
+ensembl_sleep_s
 beam_min_batch_size
 beam_max_batch_size
 min_new_species_threshold
 ```
 Example of defaulted variable: `biodiv_output_base = gs://<bucket>/biodiv-pipelines-dev`
+
+**NOTES**:
+- `ena_sleep_s` is reused for all ENA API calls, including taxonomy lookup and ENA assembly stats.
+- `ensembl_sleep_s` controls throttling for Ensembl genome stats API calls.
 
 #### Secret-backed Variables
 
@@ -190,52 +195,72 @@ and proceeds to delete the environment.
 
 ### Dataflow Pipeline Chain
 
-If the gate passes, the DAG launches the following Dataflow Flex Template jobs with these dependencies:
+The diagram shows the full ephemeral DAG. The no-delete validation DAG follows the same pipeline branches but omits `delete_composer_env`.
 
-```text
-run_taxonomy
-    ↓
-mark_taxonomy_success
-    ├──────────────────────────────────────────────┐
-    │                                              │
-    ↓                                              ↓
-run_occurrences                    run_ingest_genome_annotation_to_gcs
-    ↓                                              ↓
-mark_occurrences_success           mark_ingest_genome_annotation_to_gcs_success
-    ↓                                              ↓
-run_cleaning_occs                  run_load_genome_annotation_to_bq
-    ↓                                              ↓
-mark_cleaning_occs_success         mark_load_genome_annotation_to_bq_success
-    ↓                                              │
-run_spatial_annotation                             │
-    ↓                                              │
-mark_spatial_annotation_success                    │
-    ↓                                              │
-run_range_estimation                               │
-    ↓                                              │
-mark_range_estimation_success                      │
-    ↓                                              │
-run_data_provenance                                │
-    ↓                                              │
-mark_data_provenance_success                       │
-    │                                              │
-    └──────────────────────┬───────────────────────┘
-                           ↓
-          build_genome_biotype_summary_sql
-                           ↓
-          run_genome_biotype_summary_bq
-                           ↓
-          run_biodiv_warehouse_integration_bq
-                           ↓
-          mark_run_bq_integration_success
-                           ↓
-          mark_pipelines_completion_success
-                           ↓
-          delete_composer_env
+```mermaid
+flowchart TD
+    validate["validate_config"] --> gate["check_new_species_gate"]
+
+    gate --> run_taxonomy["run_taxonomy"]
+    gate --> skipped["mark_pipelines_skip_success"]
+
+    run_taxonomy --> mark_taxonomy["mark_taxonomy_success"]
+
+    mark_taxonomy --> run_occurrences["run_occurrences"]
+    run_occurrences --> mark_occurrences["mark_occurrences_success"]
+    mark_occurrences --> run_cleaning["run_cleaning_occs"]
+    run_cleaning --> mark_cleaning["mark_cleaning_occs_success"]
+    mark_cleaning --> run_spatial["run_spatial_annotation"]
+    run_spatial --> mark_spatial["mark_spatial_annotation_success"]
+    mark_spatial --> run_range["run_range_estimation"]
+    run_range --> mark_range["mark_range_estimation_success"]
+    mark_range --> run_provenance["run_data_provenance"]
+    run_provenance --> mark_provenance["mark_data_provenance_success"]
+
+    mark_taxonomy --> run_ingest_gtf["run_ingest_genome_annotation_to_gcs"]
+    run_ingest_gtf --> mark_ingest_gtf["mark_ingest_genome_annotation_to_gcs_success"]
+    mark_ingest_gtf --> run_load_gtf["run_load_genome_annotation_to_bq"]
+    run_load_gtf --> mark_load_gtf["mark_load_genome_annotation_to_bq_success"]
+
+    mark_taxonomy --> run_ena["run_ena_stats"]
+    run_ena --> mark_ena["mark_ena_stats_success"]
+
+    mark_taxonomy --> run_ensembl["run_ensembl_stats"]
+    run_ensembl --> mark_ensembl["mark_ensembl_stats_success"]
+
+    mark_provenance --> build_summary["build_genome_biotype_summary_sql"]
+    mark_load_gtf --> build_summary
+    mark_ena --> build_summary
+    mark_ensembl --> build_summary
+
+    build_summary --> run_summary_bq["run_genome_biotype_summary_bq"]
+    run_summary_bq --> run_integration["run_biodiv_warehouse_integration_bq"]
+    run_integration --> mark_integration["mark_run_bq_integration_success"]
+
+    mark_integration --> complete["mark_pipelines_completion_success"]
+    skipped --> terminal["delete_composer_env"]
+    complete --> terminal
+
+    classDef dataflow fill:#e8f0fe,stroke:#3367d6,color:#111;
+    classDef marker fill:#e6f4ea,stroke:#188038,color:#111;
+    classDef bq fill:#fef7e0,stroke:#f9ab00,color:#111;
+    classDef control fill:#f1f3f4,stroke:#5f6368,color:#111;
+
+    class run_taxonomy,run_occurrences,run_cleaning,run_spatial,run_range,run_provenance,run_ingest_gtf,run_load_gtf,run_ena,run_ensembl dataflow;
+    class mark_taxonomy,mark_occurrences,mark_cleaning,mark_spatial,mark_range,mark_provenance,mark_ingest_gtf,mark_load_gtf,mark_ena,mark_ensembl,mark_integration,complete,skipped marker;
+    class build_summary,run_summary_bq,run_integration bq;
+    class validate,gate,terminal control;
 ```
-After `mark_taxonomy_success`, the occurrence/provenance branch and genome annotation 
-branch run in parallel; the BigQuery summary and warehouse integration tasks wait for 
-both branches to complete.
+After `mark_taxonomy_success`, four branches run in parallel:
+
+- occurrence, cleaning, spatial annotation, range estimation, and provenance
+- genome annotation ingestion and BigQuery loading
+- ENA assembly stats
+- Ensembl genome stats
+
+The BigQuery warehouse integration branch waits until provenance, genome annotations,
+ENA stats, and Ensembl stats have all been loaded to BigQuery. It then builds the
+genome biotype summary and recreates the integrated warehouse table.
 
 ### Dataflow Template Specifics
 
@@ -370,20 +395,45 @@ Main outputs:
 <project>.<dataset>.bp_genome_biotype_summary
 ```
 
-#### 8. Biodiv Warehouse Integration
+#### 8. ENA and Ensembl Stats
+
+Tasks:
+- `run_ena_stats`
+- `run_ensembl_stats`
+
+Purpose:
+- reads validated taxonomy/accession records
+- retrieves ENA assembly statistics
+- retrieves Ensembl genome statistics
+- writes stats and error manifests to GCS
+- loads stats into BigQuery
+
+Main outputs:
+
+```text
+<run_prefix>/ena/ena_stats.jsonl
+<run_prefix>/ena/ena_errors.jsonl
+<run_prefix>/ensembl/ensembl_stats.jsonl
+<run_prefix>/ensembl/ensembl_errors.jsonl
+<project>.<dataset>.bp_ena_stats
+<project>.<dataset>.bp_ensembl_stats
+```
+
+#### 9. Biodiv Warehouse Integration
 Task `run_biodiv_warehouse_integration_bq`.
 
 Purpose:
 
-Combines and writes genome annotations summaries, validated taxonomy, 
-occurrence record, spatial annotation summaries, range estimates, and provenance 
-using a BigQuery table with a nested schema implementing structs and arrays of structs
-in rows identified by genomes accession IDs, 1 row per reference genome.
+Combines and writes genome annotation summaries, validated taxonomy,
+occurrence records, spatial annotation summaries, range estimates, provenance,
+ENA assembly stats, and Ensembl genome stats using a BigQuery table with a nested
+schema implementing structs and arrays of structs in rows identified by genome
+accession IDs, 1 row per reference genome.
 
 Main output:
 `<project>.<dataset>.bp_integ_genome_biodiv_annotations`
 
-#### 9. Success markers
+#### 10. Success markers
 The DAG writes success markers to indicate pipeline completion.
 After each Dataflow stage, the DAG writes a marker file to GCS.
 
@@ -403,6 +453,8 @@ Examples:
 <run_prefix>/gtf_manifest/_SUCCESS_INGEST_TO_GCS
 <run_prefix>/gtf_manifest/_SUCCESS_LOAD_TO_BQ
 <run_prefix>/gtf_manifest/_SUCCESS_BQ_INTEGRATION
+<run_prefix>/ena/_SUCCESS
+<run_prefix>/ensembl/_SUCCESS
 <run_prefix>/_SUCCESS
 ```
 If the gate skips execution, the DAG writes: `<run_prefix>/_SKIPPED` marker.
@@ -411,7 +463,7 @@ The pipelines are audited in search for species missed among runs.
 These species are backfilled by manual runs of the pipeline. In these cases,
 the run/pipeline marker is `<run_prefix>/_BACKFILLED_MANUAL`
 
-#### 10. Delete Composer Environment step
+#### 11. Delete Composer Environment step
 The DAG calls the Composer delete service using task `delete_composer_env`.
 
 It calls: `call_delete_service()`
