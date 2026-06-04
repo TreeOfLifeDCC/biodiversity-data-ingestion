@@ -72,21 +72,30 @@ with DAG(
 - The DAG deletes the Composer environment after execution.
 
 ### High-Level DAG flow
-```text
-           validate_config
-                 ↓
-        check_new_species_gate
-                 ↓
-      ┌─────────────────────────┬
-      │                         │                      
-run_pipelines          mark_pipelines_skip    
-      │                         │                      
-      ↓                         ↓                    
-_SUCCESS markers          _SKIPPED marker      
-      │                         │                  
-      └────────────┬────────────┘
-                   ↓    
-           delete_composer_env
+
+The diagram shows the full ephemeral DAG. The no-delete validation DAG follows the same pipeline branches but omits `delete_composer_env`.
+
+```mermaid
+flowchart TD
+    validate["validate_config"] --> gate["check_new_species_gate"]
+
+    gate -->|threshold met| run["run_pipelines"]
+    gate -->|threshold not met| skip["mark_pipelines_skip_success"]
+
+    run --> markers["_SUCCESS markers"]
+    skip --> skipped_marker["_SKIPPED marker"]
+
+    markers --> done["mark_pipelines_completion_success"]
+    skipped_marker --> cleanup["delete_composer_env"]
+    done --> cleanup
+
+    classDef control fill:#f1f3f4,stroke:#5f6368,color:#111;
+    classDef run fill:#e8f0fe,stroke:#3367d6,color:#111;
+    classDef marker fill:#e6f4ea,stroke:#188038,color:#111;
+
+    class validate,gate,cleanup control;
+    class run run;
+    class markers,skip,skipped_marker,done marker;
 ```
 ### Runtime configuration
 Runtime configuration is loaded using:
