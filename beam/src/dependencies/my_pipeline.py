@@ -16,6 +16,11 @@ from dependencies.utils.map_functions import (
 )
 from dependencies.utils.write_to_elasticsearch import WriteToElasticsearchDoFn
 from dependencies.utils.schemas import bq_metadata_schema
+from dependencies.utils.trec_normalise import (
+    extract_parent_child_relationships,
+    normalise_trec_record,
+    parse_trec_json_line,
+)
 
 
 def biodiversity_etl(
@@ -39,17 +44,36 @@ def biodiversity_etl(
     # `collect_metadata_trec` task into the `data_portal` index – no BigQuery table
     # or additional biodiversity enrichment.
     if bq_dataset_name == "trec":
-        (
+        trec_records = (
             pipeline
             | "Read TREC metadata from JSONL" >> beam.io.ReadFromText(input_path)
-            | "Parse TREC JSONL" >> beam.Map(lambda sample: json.loads(sample))
+            | "Parse TREC JSONL" >> beam.Map(parse_trec_json_line)
+        )
+
+        derived_sample_ids_by_parent = (
+            trec_records
+            | "Extract TREC parent child relationships"
+            >> beam.FlatMap(extract_parent_child_relationships)
+            | "Group TREC derived samples by parent" >> beam.GroupByKey()
+            | "Sort TREC derived sample ids"
+            >> beam.Map(lambda item: (item[0], sorted(item[1])))
+        )
+
+        (
+            trec_records
+            | "Normalise TREC records"
+            >> beam.Map(
+            normalise_trec_record,
+            beam.pvalue.AsDict(derived_sample_ids_by_parent),
+        )
             | "Write TREC records to Elasticsearch"
             >> beam.ParDo(
-                WriteToElasticsearchDoFn(
-                    index="data_portal", project_name=bq_dataset_name
-                )
+            WriteToElasticsearchDoFn(
+                index="data_portal", project_name=bq_dataset_name
             )
         )
+        )
+
         return pipeline
 
     genome_notes = (

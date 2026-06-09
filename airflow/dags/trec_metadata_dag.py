@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-
+from airflow.operators.python import PythonOperator
 import pendulum
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
@@ -10,6 +10,7 @@ from elasticsearch import Elasticsearch
 
 from dependencies.common_functions import start_apache_beam
 from dependencies.trec_project import trec_projects
+from dependencies import import_trec_images
 
 
 @task
@@ -116,6 +117,15 @@ def trec_metadata_ingestion():
         task_id="trec-remove-old-data-portal-index",
         bash_command=remove_data_portal_index_command,
     )
+    import_trec_images_task = PythonOperator(
+        task_id="trec-import-images",
+        python_callable=import_trec_images.main,
+        op_kwargs={
+            "es_host": host,
+            "es_password": password,
+            "index_name": f"{date_prefix}_data_portal",
+        },
+    )
 
     # ES index must exist before Beam runs, metadata must be produced before Beam
     (
@@ -132,9 +142,11 @@ def trec_metadata_ingestion():
 
     (metadata_task >>
     start_ingestion_job)
-    (start_ingestion_job >>
-    change_aliases_task >>
-    remove_data_portal_index_task)
-
+    (
+        start_ingestion_job
+        >> import_trec_images_task
+        >> change_aliases_task
+        >> remove_data_portal_index_task
+    )
 
 trec_metadata_ingestion()
