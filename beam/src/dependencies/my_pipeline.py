@@ -28,6 +28,8 @@ def biodiversity_etl(
     input_path: str,
     output_path: str,
     pipeline_options_args: list[str],
+    elasticsearch_host: str | None = None,
+    elasticsearch_password: str | None = None,
 ) -> beam.Pipeline:
     """
     Instantiates and returns a Beam pipeline object
@@ -69,7 +71,10 @@ def biodiversity_etl(
             | "Write TREC records to Elasticsearch"
             >> beam.ParDo(
             WriteToElasticsearchDoFn(
-                index="data_portal", project_name=bq_dataset_name
+                index="data_portal",
+                project_name=bq_dataset_name,
+                elasticsearch_host=elasticsearch_host,
+                elasticsearch_password=elasticsearch_password,
             )
         )
         )

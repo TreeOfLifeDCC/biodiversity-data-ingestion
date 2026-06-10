@@ -74,6 +74,15 @@ def parse_number(value):
     return None
 
 
+def set_geo_location(record: dict) -> None:
+    lat = record.get("lat")
+    lon = record.get("lon")
+    if lat is None or lon is None:
+        record.pop("geo_location", None)
+    else:
+        record["geo_location"] = {"lat": lat, "lon": lon}
+
+
 def parse_ontology_label(value):
     if not isinstance(value, str):
         return value
@@ -218,6 +227,7 @@ def normalise_trec_record(
             record.pop(field, None)
         else:
             record[field] = value
+    set_geo_location(record)
 
     for source_field, target_field in [
         ("size-fraction lower threshold", "size_fraction_lower"),

@@ -8,23 +8,36 @@ from google.cloud import secretmanager
 
 class WriteToElasticsearchDoFn(beam.DoFn):
 
-    def __init__(self, index, project_name):
+    def __init__(
+        self,
+        index,
+        project_name,
+        elasticsearch_host=None,
+        elasticsearch_password=None,
+    ):
         super().__init__()
         self.index = f"{datetime.today().strftime('%Y-%m-%d')}_{index}"
         self.project_name = project_name
+        self.elasticsearch_host = elasticsearch_host
+        self.elasticsearch_password = elasticsearch_password
         self.es = None
         self.actions = None
 
     def setup(self):
-        client = secretmanager.SecretManagerServiceClient()
-        host = client.access_secret_version(request={
-            "name": f"projects/153439618737/secrets/"
-                    f"{self.project_name}_elasticsearch_host/versions/latest"}
-        ).payload.data.decode("UTF-8")
-        password = client.access_secret_version(request={
-            "name": f"projects/153439618737/secrets/"
-                    f"{self.project_name}_elasticsearch_password/versions/"
-                    f"latest"}).payload.data.decode("UTF-8")
+        host = self.elasticsearch_host
+        password = self.elasticsearch_password
+
+        if not host or not password:
+            client = secretmanager.SecretManagerServiceClient()
+            host = client.access_secret_version(request={
+                "name": f"projects/153439618737/secrets/"
+                        f"{self.project_name}_elasticsearch_host/versions/latest"}
+            ).payload.data.decode("UTF-8")
+            password = client.access_secret_version(request={
+                "name": f"projects/153439618737/secrets/"
+                        f"{self.project_name}_elasticsearch_password/versions/latest"}
+            ).payload.data.decode("UTF-8")
+
         self.es = Elasticsearch([host], http_auth=("elastic", password))
 
     def start_bundle(self):

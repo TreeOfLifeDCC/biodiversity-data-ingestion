@@ -106,15 +106,6 @@ def parse_number(value):
     return None
 
 
-def set_geo_location(record: dict) -> None:
-    lat = record.get("lat")
-    lon = record.get("lon")
-    if lat is None or lon is None:
-        record.pop("geo_location", None)
-    else:
-        record["geo_location"] = {"lat": lat, "lon": lon}
-
-
 def parse_ontology_label(value):
     if not isinstance(value, str):
         return value
@@ -178,12 +169,12 @@ def parse_analysis_type(target_analysis, protocol_label):
             return "Imaging"
     return None
 
-def build_station_name_strict(country, locality, lat, lon):
+def build_station_name(country, locality, lat, lon):
     if locality and lat is not None and lon is not None:
         return f"{locality}, {country}" if country else locality
     return None
 
-def build_station_name(country, locality, lat, lon):
+def build_station_name_localitybased(country, locality, lat, lon):
     if lat is None or lon is None:
         return None
     if locality and country:
@@ -240,7 +231,6 @@ def normalise_record(
             record.pop(field, None)
         else:
             record[field] = value
-    set_geo_location(record)
 
     for source_field, target_field in [
         ("size-fraction lower threshold", "size_fraction_lower"),

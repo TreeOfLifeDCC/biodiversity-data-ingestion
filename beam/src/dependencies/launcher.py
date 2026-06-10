@@ -16,12 +16,18 @@ def run(argv: list[str] | None = None):
                         help="Output path for results")
     parser.add_argument('--bq_dataset_name', required=True,
                         help='BigQuery dataset name')
+    parser.add_argument("--elasticsearch_host", required=False)
+    parser.add_argument("--elasticsearch_password", required=False)
 
     pipeline_args, other_args = parser.parse_known_args(argv)
 
     pipeline = my_pipeline.biodiversity_etl(
-        pipeline_args.bq_dataset_name, pipeline_args.input_path,
-        pipeline_args.output_path, other_args
+        pipeline_args.bq_dataset_name,
+        pipeline_args.input_path,
+        pipeline_args.output_path,
+        other_args,
+        elasticsearch_host=pipeline_args.elasticsearch_host,
+        elasticsearch_password=pipeline_args.elasticsearch_password,
     )
 
     pipeline.run()
