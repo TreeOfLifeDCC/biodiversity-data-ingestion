@@ -69,24 +69,15 @@ def trec_metadata_ingestion():
     project_cfg = trec_projects["project"]
     project_tag = project_cfg["project_tag"]
     bucket_name = project_cfg["bucket_name"]
-    test_tag = "trec-test-20260609-001"
-    test_prefix = f"test/{test_tag}"
 
     # Create the TREC metadata file in GCS
     metadata_task = get_trec_metadata.override(task_id="trec_get_metadata")(
-        project_tag,
-        bucket_name,
-        f"{test_prefix}/{project_tag}.jsonl",
+       project_tag,
+        bucket_name
     )
 
     # Start Beam / Dataflow ingestion
-    start_ingestion_job = start_apache_beam(
-        "trec",
-        template_tag=test_tag,
-        job_name=test_tag,
-        input_path=f"gs://{bucket_name}/{test_prefix}/*.jsonl",
-        output_path=f"gs://{bucket_name}/{test_prefix}/output",
-    )
+    start_ingestion_job = start_apache_beam("trec")
 
     # Get Elasticsearch variables
     host = Variable.get("trec_elasticsearch_host")
@@ -157,8 +148,8 @@ def trec_metadata_ingestion():
     (
         start_ingestion_job
         >> import_trec_images_task
-        # >> change_aliases_task
-        # >> remove_data_portal_index_task
+        >> change_aliases_task
+        >> remove_data_portal_index_task
     )
 
 trec_metadata_ingestion()
