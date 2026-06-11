@@ -25,24 +25,6 @@
       "regexes": [
         "(^erga$|^dtol$|^asg$|^gbdp$|^trec$)"
       ]
-    },
-    {
-      "name": "sdk_container_image",
-      "label": "SDK container image",
-      "helpText": "Optional custom SDK container image for Dataflow workers.",
-      "isOptional": true
-    },
-    {
-      "name": "elasticsearch_host",
-      "label": "Elasticsearch host",
-      "helpText": "Optional Elasticsearch host override for test runs.",
-      "isOptional": true
-    },
-    {
-      "name": "elasticsearch_password",
-      "label": "Elasticsearch password",
-      "helpText": "Optional Elasticsearch password override for test runs.",
-      "isOptional": true
     }
   ]
 }
