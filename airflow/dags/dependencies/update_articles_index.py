@@ -49,7 +49,9 @@ def update_articles_index(host: str, password: str):
 
 def get_samples(index_name, es):
     samples = dict()
-    search_body = {"size": PAGE_SIZE, "sort": [{"tax_id": "asc"}]}
+    # _id is a unique tiebreaker so search_after has a total ordering and never
+    # skips/duplicates records when tax_id values collide across page boundaries.
+    search_body = {"size": PAGE_SIZE, "sort": [{"tax_id": "asc"}, {"_id": "asc"}]}
     response = es.search(
         index=index_name, body=search_body, request_timeout=REQUEST_TIMEOUT
     )
