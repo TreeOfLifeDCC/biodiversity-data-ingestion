@@ -5,9 +5,13 @@ import asyncio
 import aiohttp
 from collections import defaultdict
 
-from bs4 import BeautifulSoup,  XMLParsedAsHTMLWarning
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from xml.etree import ElementTree as ET
 import warnings
+import re
+import html
+import requests
+from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 
 
 TOKEN_URL = "https://wellcomeopenresearch.org/api/token"
@@ -15,6 +19,10 @@ GATEWAY_URL = "https://wellcomeopenresearch.org/content?gatewayIds[0]=231&gatewa
 EBI_API_BASE = "https://www.ebi.ac.uk/ena/browser/api/xml/"
 MAX_CONCURRENT_REQUESTS = 1
 REQUEST_TIMEOUT = 30.0
+
+# RIO genome notes collection (RIO Journal topical collection)
+RIO_BASE_URL = "https://riojournal.com/browse_topical_collection_documents.php?journal_name=rio&collection_id=280&lang=&journal_id=17&p=0"
+ERGA_API_URL = "https://portal.erga-biodiversity.eu/api/data_portal"
 
 
 def clean_study_id(study_id: str) -> str:
@@ -318,6 +326,326 @@ async def parse_genome_notes(
     return genome_notes
 
 
+def get_article_links_from_headlines(url: str) -> List[Dict[str, Any]]:
+    """
+    Parse a RIO topical collection page and return basic article metadata
+    (URL, title, provisional ID text, figure URI).
+    """
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    items_by_url: Dict[str, Dict[str, Any]] = {}
+
+    article_containers = soup.find_all("div", class_="article")
+    for article in article_containers:
+        headline_div = article.find("div", class_="articleHeadline")
+        if not headline_div:
+            continue
+
+        img_src = ""
+        image_holder = article.find("div", class_="articleCoverImageHolder")
+        if image_holder:
+            for img in image_holder.find_all("img", src=True):
+                img_src = urljoin(url, img["src"])
+
+        for a in headline_div.find_all("a", href=True):
+            href = a["href"]
+            raw_title = a.get_text(" ", strip=True)
+            text = " ".join(raw_title.split())
+            if not text:
+                continue
+
+            em_tag = a.find("em")
+            em_text = em_tag.get_text(strip=True) if em_tag else ""
+
+            i_tag = a.find("i")
+            i_text = i_tag.get_text(strip=True) if i_tag else ""
+
+            chosen_id = em_text or i_text
+            if not chosen_id:
+                matches = re.findall(r"\(([^)]+)\)", text)
+                if matches:
+                    chosen_id = matches[-1].strip()
+
+            full_url = urljoin(url, href)
+            items_by_url[full_url] = {
+                "url": full_url,
+                "title": text,
+                "id": chosen_id,
+                "figureURI": img_src,
+            }
+
+    return list(items_by_url.values())
+
+
+def build_page_url(base_url: str, page_index: int) -> str:
+    """
+    Return a copy of base_url with the query parameter p set to page_index.
+    """
+    parsed = urlparse(base_url)
+    query = parse_qs(parsed.query)
+    query["p"] = [str(page_index)]
+    new_query = urlencode(query, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+def get_number_of_papers_in_press_pages(soup: BeautifulSoup) -> int:
+    """
+    Look for element with id 'bookInfo', find the <p> containing
+    'Papers in press:' and read the numeric value inside its <span>.
+    That value controls how many times we call the RIO_BASE_URL (pages).
+    """
+    book_info = soup.find(id="bookInfo")
+    if not book_info:
+        return 1
+
+    p_tag = book_info.find(
+        lambda tag: tag.name == "p" and "Papers in press:" in tag.get_text(strip=True)
+    )
+    if not p_tag:
+        return 1
+
+    span = p_tag.find("span")
+    if not span:
+        return 1
+
+    raw_text = span.get_text(strip=True)
+    digits = "".join(ch for ch in raw_text if ch.isdigit())
+    if not digits:
+        return 1
+
+    value = int(digits)
+    return max(1, value)
+
+
+def clean_abstract_text(raw: str) -> str:
+    """
+    Normalise abstract text by stripping ALL JATS/XML/HTML tags.
+    """
+    if not raw:
+        return ""
+    raw = html.unescape(raw).strip()
+    if not raw:
+        return ""
+
+    no_tags = re.sub(r"<[^>]+>", "", raw, flags=re.DOTALL)
+    cleaned = " ".join(no_tags.split())
+    return cleaned
+
+
+def get_erga_id_or_same(search_value: str) -> Optional[str]:
+    """
+    Call the ERGA data_portal API with `search_value` and return its tax_id/_id.
+    """
+    if not search_value:
+        return None
+
+    params = {
+        "limit": 15,
+        "offset": 0,
+        "search": search_value,
+        "sort": "currentStatus:asc",
+        "current_class": "kingdom",
+    }
+
+    try:
+        resp = requests.get(ERGA_API_URL, params=params, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return None
+
+    results = data.get("results") or []
+    if not results:
+        return None
+
+    first = results[0]
+    src = first.get("_source", {}) or {}
+    erga_id = src.get("tax_id") or first.get("_id")
+    if not erga_id:
+        return None
+
+    return str(erga_id)
+
+
+def fetch_abstract_from_crossref(doi: str) -> str:
+    """
+    Try to fetch an abstract using the CrossRef API for a given DOI.
+    """
+    if not doi:
+        return ""
+
+    api_url = f"https://api.crossref.org/works/{doi}"
+    headers = {"User-Agent": "articles-scraper/1.0 (mailto:example@example.com)"}
+    try:
+        resp = requests.get(api_url, headers=headers, timeout=20)
+        resp.raise_for_status()
+    except Exception:
+        return ""
+
+    try:
+        message = resp.json().get("message", {})
+    except Exception:
+        return ""
+
+    raw_abstract = message.get("abstract") or ""
+    return clean_abstract_text(raw_abstract)
+
+
+def fetch_abstract(url: str) -> str:
+    """
+    Fetch an article page and try to extract its abstract text.
+    """
+    parsed = urlparse(url)
+
+    if parsed.netloc == "doi.org":
+        doi = parsed.path.lstrip("/")
+        return fetch_abstract_from_crossref(doi)
+
+    try:
+        resp = requests.get(url, timeout=20)
+        resp.raise_for_status()
+    except Exception:
+        return ""
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    for meta_name in ("citation_abstract", "dc.description", "DC.Description", "description"):
+        meta = soup.find("meta", attrs={"name": meta_name})
+        if meta and meta.get("content"):
+            return clean_abstract_text(meta["content"])
+
+    for prop_name in ("og:description", "twitter:description"):
+        meta = soup.find("meta", attrs={"property": prop_name})
+        if meta and meta.get("content"):
+            return clean_abstract_text(meta["content"])
+
+    candidates = [
+        soup.select_one("div.abstract"),
+        soup.select_one("section.abstract"),
+        soup.select_one("div#abstract"),
+        soup.select_one("section#abstract"),
+        soup.select_one("div.articleAbstract"),
+        soup.select_one("section.article-abstract"),
+    ]
+    for node in candidates:
+        if node:
+            text = node.get_text(" ", strip=True)
+            if text:
+                return clean_abstract_text(text)
+
+    heading = soup.find(
+        lambda tag: tag.name in ("h1", "h2", "h3", "h4")
+        and "abstract" in tag.get_text(strip=True).lower()
+    )
+    if heading:
+        parts: List[str] = []
+        for sib in heading.find_all_next():
+            if sib.name in ("h1", "h2", "h3", "h4") and sib is not heading:
+                break
+            if sib.name in ("p", "div"):
+                txt = sib.get_text(" ", strip=True)
+                if txt:
+                    parts.append(txt)
+        if parts:
+            return clean_abstract_text(" ".join(parts))
+
+    label_node = soup.find(
+        lambda tag: tag.name in ("p", "div", "span", "strong")
+        and tag.get_text(strip=True).lower() == "abstract"
+    )
+    if label_node:
+        if label_node.name in ("p", "div"):
+            next_p = label_node.find_next_sibling("p")
+            if next_p:
+                txt = next_p.get_text(" ", strip=True)
+                if txt:
+                    return clean_abstract_text(txt)
+        parent = label_node.parent
+        if parent and parent.name in ("p", "div"):
+            next_p = parent.find_next_sibling("p")
+            if next_p:
+                txt = next_p.get_text(" ", strip=True)
+                if txt:
+                    return clean_abstract_text(txt)
+
+    para = soup.find(
+        lambda tag: tag.name == "p"
+        and "abstract" in tag.get_text(strip=True).lower()
+    )
+    if para:
+        raw = para.get_text(" ", strip=True)
+        lower = raw.lower()
+        idx = lower.find("abstract")
+        if idx != -1:
+            cleaned = raw[idx + len("abstract") :].lstrip(" :.-\u2013")
+            if cleaned:
+                return clean_abstract_text(cleaned)
+        return clean_abstract_text(raw)
+
+    return ""
+
+
+def fetch_rio_genome_notes() -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Scrape the RIO Journal topical collection and build genome notes
+    records keyed by ERGA tax_id, matching the existing genome_notes structure.
+    """
+    genome_notes: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+    try:
+        resp = requests.get(RIO_BASE_URL, timeout=20)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"Failed to fetch RIO base page: {e}")
+        return genome_notes
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    total_pages = get_number_of_papers_in_press_pages(soup)
+
+    all_items: List[Dict[str, Any]] = []
+    for page_index in range(total_pages):
+        page_url = build_page_url(RIO_BASE_URL, page_index)
+        try:
+            page_items = get_article_links_from_headlines(page_url)
+            all_items.extend(page_items)
+        except Exception as e:
+            print(f"Failed to parse RIO page {page_url}: {e}")
+
+    final_items: List[Dict[str, Any]] = []
+    for item in all_items:
+        url = item.get("url")
+        if not url:
+            continue
+
+        item["abstract"] = fetch_abstract(url)
+        erga_id = get_erga_id_or_same(item.get("id"))  # maps to tax_id/_id in ERGA
+        if not erga_id:
+            continue
+
+        genome_note = {
+            "tax_id": erga_id,
+            "study_id": None,
+            "url": url,
+            "citeURL": url,
+            "title": item.get("title", ""),
+            "abstract": item.get("abstract", ""),
+            "figureURI": item.get("figureURI") or "#",
+            "caption": None,
+        }
+        genome_notes[erga_id].append(genome_note)
+        final_items.append(item)
+
+    missing_abstracts = [it for it in final_items if not it.get("abstract")]
+    if missing_abstracts:
+        print("RIO articles missing abstract:")
+        for it in missing_abstracts:
+            print(" -", it.get("url", ""))
+
+    return genome_notes
+
+
 async def main():
     async with aiohttp.ClientSession() as session:
         try:
@@ -355,9 +683,15 @@ async def main():
                 else:
                     print("No articles were fetched sequentially")
 
-            # Process the combined articles
+            # Process the combined articles from Wellcome Open Research
             genome_notes = await parse_genome_notes(session, articles)
-            print(f"Processing complete! Total entries: {len(genome_notes)}")
+
+            # Enrich with additional genome notes from the RIO topical collection
+            rio_genome_notes = fetch_rio_genome_notes()
+            for tax_id, notes in rio_genome_notes.items():
+                genome_notes[tax_id].extend(notes)
+
+            print(f"Processing complete! Total entries (including RIO): {len(genome_notes)}")
             return genome_notes
         except Exception as e:
             print(f"An error occurred during processing: {e}")
