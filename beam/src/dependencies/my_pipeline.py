@@ -33,6 +33,25 @@ def biodiversity_etl(
     )
 
     pipeline = beam.Pipeline(options=pipeline_options)
+
+    # TREC-specific pipeline: directly index preprocessed JSONL into Elasticsearch.
+    # For TREC we only need to push the metadata records built by the
+    # `collect_metadata_trec` task into the `data_portal` index – no BigQuery table
+    # or additional biodiversity enrichment.
+    if bq_dataset_name == "trec":
+        (
+            pipeline
+            | "Read TREC metadata from JSONL" >> beam.io.ReadFromText(input_path)
+            | "Parse TREC JSONL" >> beam.Map(lambda sample: json.loads(sample))
+            | "Write TREC records to Elasticsearch"
+            >> beam.ParDo(
+                WriteToElasticsearchDoFn(
+                    index="data_portal", project_name=bq_dataset_name
+                )
+            )
+        )
+        return pipeline
+
     genome_notes = (
         pipeline
         | "Read genome_notes from JSON file"

@@ -79,6 +79,12 @@ class WriteToElasticsearchDoFn(beam.DoFn):
                 record_id = element["tax_id"]
             else:
                 record_id = element['organism']
+        elif self.project_name == "trec" and "data_portal" in self.index:
+            # For the TREC project we index the flattened metadata records produced
+            # by the Airflow `collect_metadata_trec` task directly into the
+            # `data_portal` index, using the BioSamples accession as the document id.
+            record = element
+            record_id = element["biosampleId"]
         elif "specimens" in self.index:
             record = element
             record_id = element["accession"]
