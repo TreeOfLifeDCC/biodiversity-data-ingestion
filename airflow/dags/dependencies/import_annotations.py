@@ -87,3 +87,25 @@ def resolve_tax_id(accession, cache, _get=requests.get, retries=3, sleep_s=0.1):
     cache[accession] = tax_id
     time.sleep(sleep_s)
     return tax_id
+
+
+def fetch_project_yaml(project, token, _get=requests.get):
+    """Fetch and parse `_data/<project>/species.yaml` from the (private)
+    projects.ensembl.org GitHub repo. Raises on HTTP error or unexpected shape.
+    """
+    resp = _get(
+        GITHUB_CONTENTS.format(project=project),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github.raw",
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    data = yaml.safe_load(resp.content)
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Unexpected species.yaml for {project!r}: "
+            f"expected a list, got {type(data).__name__}"
+        )
+    return data

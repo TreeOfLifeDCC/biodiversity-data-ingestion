@@ -119,3 +119,38 @@ def test_resolve_tax_id_failure_returns_none():
     got = ia.resolve_tax_id("GCA_bad", cache, _get=_get, retries=2, sleep_s=0)
     assert got is None
     assert cache["GCA_bad"] is None
+
+
+_YAML_DOC = b"""
+- species: Acropora austera
+  accession: GCA_964273435.1
+  annotation_gtf: https://ftp/gtf.gz
+  ftp_dumps: https://ftp/dir/
+  beta_link: https://beta.ensembl.org/species/abc
+"""
+
+
+def test_fetch_project_yaml_parses_list_and_sends_token():
+    seen = {}
+
+    def _get(url, headers=None, timeout=None):
+        seen["url"] = url
+        seen["headers"] = headers
+        return _FakeResp(_YAML_DOC)
+
+    out = ia.fetch_project_yaml("asg", "tok123", _get=_get)
+    assert isinstance(out, list)
+    assert out[0]["accession"] == "GCA_964273435.1"
+    assert "_data/asg/species.yaml" in seen["url"]
+    assert seen["headers"]["Authorization"] == "Bearer tok123"
+
+
+def test_fetch_project_yaml_rejects_non_list():
+    def _get(*a, **k):
+        return _FakeResp(b"message: Not Found")
+
+    try:
+        ia.fetch_project_yaml("asg", "tok", _get=_get)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
