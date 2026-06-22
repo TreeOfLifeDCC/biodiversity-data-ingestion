@@ -70,3 +70,52 @@ def test_project_sources_groupings():
         "vgp",
         "canadian_biogenome",
     ]
+
+
+class _FakeResp:
+    def __init__(self, content=b"", status=200):
+        self.content = content
+        self._status = status
+
+    def raise_for_status(self):
+        if self._status >= 400:
+            raise RuntimeError(f"HTTP {self._status}")
+
+
+_ENA_XML = (
+    b"<ASSEMBLY_SET><ASSEMBLY accession='GCA_x'>"
+    b"<TAXON><TAXON_ID>117779</TAXON_ID></TAXON>"
+    b"</ASSEMBLY></ASSEMBLY_SET>"
+)
+
+
+def test_resolve_tax_id_success():
+    cache = {}
+    got = ia.resolve_tax_id(
+        "GCA_x", cache, _get=lambda *a, **k: _FakeResp(_ENA_XML), sleep_s=0
+    )
+    assert got == "117779"
+    assert cache["GCA_x"] == "117779"
+
+
+def test_resolve_tax_id_uses_cache():
+    calls = []
+
+    def _get(*a, **k):
+        calls.append(1)
+        return _FakeResp(_ENA_XML)
+
+    cache = {}
+    ia.resolve_tax_id("GCA_x", cache, _get=_get, sleep_s=0)
+    ia.resolve_tax_id("GCA_x", cache, _get=_get, sleep_s=0)
+    assert len(calls) == 1
+
+
+def test_resolve_tax_id_failure_returns_none():
+    def _get(*a, **k):
+        raise RuntimeError("boom")
+
+    cache = {}
+    got = ia.resolve_tax_id("GCA_bad", cache, _get=_get, retries=2, sleep_s=0)
+    assert got is None
+    assert cache["GCA_bad"] is None

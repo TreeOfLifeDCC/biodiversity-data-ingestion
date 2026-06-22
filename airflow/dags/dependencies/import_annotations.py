@@ -57,3 +57,33 @@ def build_record(entry: dict, tax_id: str) -> dict:
         "other_data": {"ftp_dumps": entry.get("ftp_dumps")},
         "view_in_browser": entry.get("beta_link"),
     }
+
+
+def resolve_tax_id(accession, cache, _get=requests.get, retries=3, sleep_s=0.1):
+    """Resolve an accession to its NCBI tax_id via ENA, cached across calls.
+
+    Returns the tax_id string, or None on persistent failure (logged, never
+    raised, so one bad accession cannot abort the whole task).
+    """
+    if accession in cache:
+        return cache[accession]
+    tax_id = None
+    for attempt in range(retries):
+        try:
+            resp = _get(ENA_XML.format(accession=accession), timeout=30)
+            resp.raise_for_status()
+            node = ET.fromstring(resp.content).find(".//TAXON_ID")
+            if node is not None and node.text:
+                tax_id = node.text.strip()
+            break
+        except Exception as exc:  # network, HTTP, or XML parse error
+            logger.warning(
+                "ENA tax_id lookup failed for %s (attempt %d/%d): %s",
+                accession, attempt + 1, retries, exc,
+            )
+            time.sleep(sleep_s)
+    if tax_id is None:
+        logger.warning("No tax_id resolved for %s; skipping its record", accession)
+    cache[accession] = tax_id
+    time.sleep(sleep_s)
+    return tax_id
