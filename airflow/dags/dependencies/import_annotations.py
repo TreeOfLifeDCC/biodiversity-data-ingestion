@@ -115,19 +115,30 @@ def build_project(project_name, token, cache, _fetch=fetch_project_yaml,
                   _resolve=resolve_tax_id):
     """Build {tax_id: [record, ...]} for one output manifest, deduping by
     accession across the project's source dirs.
+
+    Raises RuntimeError if accessions were found but none resolved a tax_id
+    (a likely ENA outage): writing an empty manifest here would truncate the
+    downstream BigQuery/ES annotation data for the whole project.
     """
     seen = set()
     by_tax = {}
+    entries_seen = 0
     for source in PROJECT_SOURCES[project_name]:
         for entry in _fetch(source, token):
             accession = entry.get("accession")
             if not accession or accession in seen:
                 continue
             seen.add(accession)
+            entries_seen += 1
             tax_id = _resolve(accession, cache)
             if tax_id is None:
                 continue
             by_tax.setdefault(tax_id, []).append(build_record(entry, tax_id))
+    if entries_seen and not by_tax:
+        raise RuntimeError(
+            f"{project_name}: {entries_seen} accessions found but none resolved "
+            f"a tax_id (likely an ENA outage); refusing to write an empty manifest"
+        )
     return by_tax
 
 

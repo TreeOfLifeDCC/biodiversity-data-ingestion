@@ -186,15 +186,33 @@ def test_build_project_dedups_accession_and_groups_by_tax():
     assert len(by_tax["30"]) == 1
 
 
-def test_build_project_drops_unresolved_tax():
+def test_build_project_drops_unresolved_but_keeps_resolved():
+    def _fetch(project, token):
+        return [
+            {"species": "X", "accession": "GCA_9.1", "ftp_dumps": "u"},
+            {"species": "Y", "accession": "GCA_8.1", "ftp_dumps": "u"},
+        ]
+
+    def _resolve(acc, cache):
+        return {"GCA_9.1": None, "GCA_8.1": "80"}[acc]
+
+    by_tax = ia.build_project("dtol", "tok", {}, _fetch=_fetch, _resolve=_resolve)
+    assert list(by_tax.keys()) == ["80"]
+    assert len(by_tax["80"]) == 1
+
+
+def test_build_project_raises_when_all_unresolved():
     def _fetch(project, token):
         return [{"species": "X", "accession": "GCA_9.1", "ftp_dumps": "u"}]
 
     def _resolve(acc, cache):
         return None
 
-    by_tax = ia.build_project("dtol", "tok", {}, _fetch=_fetch, _resolve=_resolve)
-    assert by_tax == {}
+    try:
+        ia.build_project("dtol", "tok", {}, _fetch=_fetch, _resolve=_resolve)
+        assert False, "expected RuntimeError"
+    except RuntimeError:
+        pass
 
 
 def test_main_builds_all_projects_and_writes(monkeypatch):
