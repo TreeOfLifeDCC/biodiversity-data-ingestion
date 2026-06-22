@@ -109,3 +109,23 @@ def fetch_project_yaml(project, token, _get=requests.get):
             f"expected a list, got {type(data).__name__}"
         )
     return data
+
+
+def build_project(project_name, token, cache, _fetch=fetch_project_yaml,
+                  _resolve=resolve_tax_id):
+    """Build {tax_id: [record, ...]} for one output manifest, deduping by
+    accession across the project's source dirs.
+    """
+    seen = set()
+    by_tax = {}
+    for source in PROJECT_SOURCES[project_name]:
+        for entry in _fetch(source, token):
+            accession = entry.get("accession")
+            if not accession or accession in seen:
+                continue
+            seen.add(accession)
+            tax_id = _resolve(accession, cache)
+            if tax_id is None:
+                continue
+            by_tax.setdefault(tax_id, []).append(build_record(entry, tax_id))
+    return by_tax

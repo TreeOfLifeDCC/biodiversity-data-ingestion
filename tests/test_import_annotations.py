@@ -154,3 +154,44 @@ def test_fetch_project_yaml_rejects_non_list():
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+def test_build_project_dedups_accession_and_groups_by_tax():
+    # Two source dirs (erga uses 3; here gbdp-style overlap is simulated with asg
+    # by monkeypatching PROJECT_SOURCES via a fetch that returns per-dir data).
+    per_dir = {
+        "darwin_tree_of_life": [
+            {"species": "A", "accession": "GCA_1.1", "ftp_dumps": "u"},
+            {"species": "B", "accession": "GCA_2.1", "ftp_dumps": "u"},
+        ],
+        "erga_bge": [
+            {"species": "A", "accession": "GCA_1.1", "ftp_dumps": "u"},  # dup
+            {"species": "C", "accession": "GCA_3.1", "ftp_dumps": "u"},
+        ],
+        "erga_pilot": [],
+    }
+    tax_map = {"GCA_1.1": "10", "GCA_2.1": "10", "GCA_3.1": "30"}
+
+    def _fetch(project, token):
+        return per_dir[project]
+
+    def _resolve(acc, cache):
+        return tax_map[acc]
+
+    by_tax = ia.build_project("erga", "tok", {}, _fetch=_fetch, _resolve=_resolve)
+    # GCA_1.1 and GCA_2.1 share tax 10; GCA_1.1 appears once despite the dup.
+    assert sorted(by_tax.keys()) == ["10", "30"]
+    accs_10 = sorted(r["accession"] for r in by_tax["10"])
+    assert accs_10 == ["GCA_1.1", "GCA_2.1"]
+    assert len(by_tax["30"]) == 1
+
+
+def test_build_project_drops_unresolved_tax():
+    def _fetch(project, token):
+        return [{"species": "X", "accession": "GCA_9.1", "ftp_dumps": "u"}]
+
+    def _resolve(acc, cache):
+        return None
+
+    by_tax = ia.build_project("dtol", "tok", {}, _fetch=_fetch, _resolve=_resolve)
+    assert by_tax == {}
