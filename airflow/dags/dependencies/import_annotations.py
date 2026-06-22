@@ -129,3 +129,24 @@ def build_project(project_name, token, cache, _fetch=fetch_project_yaml,
                 continue
             by_tax.setdefault(tax_id, []).append(build_record(entry, tax_id))
     return by_tax
+
+
+def write_jsonl(project_name, by_tax):
+    """Write {project}.jsonl to GCS, one line per tax_id."""
+    from airflow.io.path import ObjectStoragePath  # lazy: keeps module import light
+
+    base = ObjectStoragePath(GCS_BASE, conn_id="google_cloud_default")
+    base.mkdir(exist_ok=True)
+    path = base / f"{project_name}.jsonl"
+    with path.open("w") as fh:
+        for tax_id, annotations in by_tax.items():
+            fh.write(json.dumps({"annotations": annotations, "tax_id": tax_id}) + "\n")
+
+
+def main(github_token):
+    """Build and upload all four annotation manifests."""
+    cache = {}
+    for project_name in PROJECT_SOURCES:
+        by_tax = build_project(project_name, github_token, cache)
+        write_jsonl(project_name, by_tax)
+        logger.info("Wrote %s.jsonl (%d taxa)", project_name, len(by_tax))

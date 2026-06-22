@@ -195,3 +195,54 @@ def test_build_project_drops_unresolved_tax():
 
     by_tax = ia.build_project("dtol", "tok", {}, _fetch=_fetch, _resolve=_resolve)
     assert by_tax == {}
+
+
+def test_main_builds_all_projects_and_writes(monkeypatch):
+    written = {}
+
+    def fake_build_project(name, token, cache, **kw):
+        return {"10": [{"accession": "GCA_1.1", "tax_id": "10"}]}
+
+    def fake_write(name, by_tax):
+        written[name] = by_tax
+
+    monkeypatch.setattr(ia, "build_project", fake_build_project)
+    monkeypatch.setattr(ia, "write_jsonl", fake_write)
+
+    ia.main("tok")
+    assert set(written.keys()) == {"dtol", "erga", "asg", "gbdp"}
+
+
+def test_write_jsonl_serializes_lines(tmp_path, monkeypatch):
+    out = tmp_path / "asg.jsonl"
+
+    class _Path:
+        def __init__(self, p):
+            self.p = p
+
+        def __truediv__(self, name):
+            return _Path(out)
+
+        def mkdir(self, exist_ok=False):
+            pass
+
+        def open(self, mode):
+            return open(self.p, mode)
+
+    import types
+
+    fake_mod = types.SimpleNamespace(ObjectStoragePath=lambda *a, **k: _Path(out))
+    monkeypatch.setitem(
+        sys.modules, "airflow.io.path", fake_mod
+    )
+    monkeypatch.setitem(sys.modules, "airflow.io", types.ModuleType("airflow.io"))
+    monkeypatch.setitem(sys.modules, "airflow", types.ModuleType("airflow"))
+
+    ia.write_jsonl("asg", {"10": [{"accession": "GCA_1.1", "tax_id": "10"}]})
+
+    import json as _json
+
+    lines = out.read_text().splitlines()
+    assert len(lines) == 1
+    rec = _json.loads(lines[0])
+    assert rec == {"annotations": [{"accession": "GCA_1.1", "tax_id": "10"}], "tax_id": "10"}
