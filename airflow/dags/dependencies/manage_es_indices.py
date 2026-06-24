@@ -33,3 +33,22 @@ def dated_indices_for_suffix(es, suffix):
             dated.append((m.group(1), name))
     dated.sort(reverse=True)
     return [name for _, name in dated]
+
+
+def swap_alias_to_latest(es, alias, today_index):
+    """Point `alias` at `today_index`, removing it from every other index that
+    currently holds it — all in one atomic update_aliases call.
+    """
+    actions = [{"add": {"index": today_index, "alias": alias}}]
+    try:
+        current = es.indices.get_alias(name=alias)
+    except NotFoundError:
+        current = {}
+    for existing_index in current:
+        if existing_index != today_index:
+            actions.append({"remove": {"index": existing_index, "alias": alias}})
+    es.indices.update_aliases(actions=actions)
+    logger.info(
+        "Alias %s -> %s (removed from %d other index(es))",
+        alias, today_index, len(actions) - 1,
+    )

@@ -74,3 +74,47 @@ def test_dated_indices_ignores_non_dated_and_other_suffix():
     assert mei.dated_indices_for_suffix(es, "data_portal") == [
         "2026-06-24_data_portal",
     ]
+
+
+def test_swap_alias_adds_today_and_removes_stale_holder():
+    es = FakeES(
+        indices=["2026-06-24_data_portal", "2026-06-20_data_portal"],
+        aliases={"data_portal": {"2026-06-20_data_portal"}},
+    )
+    mei.swap_alias_to_latest(es, "data_portal", "2026-06-24_data_portal")
+
+    assert len(es.indices.update_aliases_calls) == 1  # atomic, single call
+    actions = es.indices.update_aliases_calls[0]
+    assert {"add": {"index": "2026-06-24_data_portal", "alias": "data_portal"}} in actions
+    assert {"remove": {"index": "2026-06-20_data_portal", "alias": "data_portal"}} in actions
+    # End state: alias points ONLY at today
+    assert es.indices.aliases["data_portal"] == {"2026-06-24_data_portal"}
+
+
+def test_swap_alias_strips_multiple_stale_holders():
+    # The duplicate-data bug: alias somehow on two old generations at once.
+    es = FakeES(
+        indices=["2026-06-24_data_portal"],
+        aliases={"data_portal": {"2026-06-20_data_portal", "2026-06-18_data_portal"}},
+    )
+    mei.swap_alias_to_latest(es, "data_portal", "2026-06-24_data_portal")
+    assert es.indices.aliases["data_portal"] == {"2026-06-24_data_portal"}
+
+
+def test_swap_alias_missing_alias_is_add_only():
+    es = FakeES(indices=["2026-06-24_data_portal"], aliases={})
+    mei.swap_alias_to_latest(es, "data_portal", "2026-06-24_data_portal")
+    actions = es.indices.update_aliases_calls[0]
+    assert actions == [
+        {"add": {"index": "2026-06-24_data_portal", "alias": "data_portal"}}
+    ]
+
+
+def test_swap_alias_no_remove_when_already_on_today():
+    es = FakeES(
+        indices=["2026-06-24_data_portal"],
+        aliases={"data_portal": {"2026-06-24_data_portal"}},
+    )
+    mei.swap_alias_to_latest(es, "data_portal", "2026-06-24_data_portal")
+    actions = es.indices.update_aliases_calls[0]
+    assert all("remove" not in a for a in actions)
