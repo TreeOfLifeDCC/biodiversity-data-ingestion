@@ -118,3 +118,36 @@ def test_swap_alias_no_remove_when_already_on_today():
     mei.swap_alias_to_latest(es, "data_portal", "2026-06-24_data_portal")
     actions = es.indices.update_aliases_calls[0]
     assert all("remove" not in a for a in actions)
+
+
+def test_prune_keeps_two_newest_deletes_rest():
+    es = FakeES(indices=[
+        "2026-06-24_data_portal",
+        "2026-06-22_data_portal",
+        "2026-06-20_data_portal",
+        "2026-06-18_data_portal",
+    ])
+    deleted = mei.prune_old_indices(es, "data_portal", keep=2)
+    assert deleted == ["2026-06-20_data_portal", "2026-06-18_data_portal"]
+    assert es.indices.indices == {
+        "2026-06-24_data_portal",
+        "2026-06-22_data_portal",
+    }
+
+
+def test_prune_noop_when_within_keep():
+    es = FakeES(indices=["2026-06-24_data_portal"])
+    assert mei.prune_old_indices(es, "data_portal", keep=2) == []
+    assert es.indices.deleted == []
+
+
+def test_prune_only_touches_matching_suffix():
+    es = FakeES(indices=[
+        "2026-06-24_specimens",
+        "2026-06-20_specimens",
+        "2026-06-18_specimens",
+        "2026-06-01_data_portal",   # different suffix, must survive
+    ])
+    deleted = mei.prune_old_indices(es, "specimens", keep=2)
+    assert deleted == ["2026-06-18_specimens"]
+    assert "2026-06-01_data_portal" in es.indices.indices

@@ -52,3 +52,16 @@ def swap_alias_to_latest(es, alias, today_index):
         "Alias %s -> %s (removed from %d other index(es))",
         alias, today_index, len(actions) - 1,
     )
+
+
+def prune_old_indices(es, suffix, keep=2):
+    """Delete dated indices for `suffix` beyond the `keep` newest.
+
+    Returns the list of deleted index names. No-op when count <= keep.
+    """
+    ordered = dated_indices_for_suffix(es, suffix)
+    to_delete = ordered[keep:]
+    for name in to_delete:
+        es.indices.delete(index=name)
+        logger.info("Deleted old index %s", name)
+    return to_delete
