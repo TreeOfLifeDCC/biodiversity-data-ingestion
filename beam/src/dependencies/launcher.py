@@ -20,8 +20,10 @@ def run(argv: list[str] | None = None):
     pipeline_args, other_args = parser.parse_known_args(argv)
 
     pipeline = my_pipeline.biodiversity_etl(
-        pipeline_args.bq_dataset_name, pipeline_args.input_path,
-        pipeline_args.output_path, other_args
+        pipeline_args.bq_dataset_name,
+        pipeline_args.input_path,
+        pipeline_args.output_path,
+        other_args
     )
 
     pipeline.run()
