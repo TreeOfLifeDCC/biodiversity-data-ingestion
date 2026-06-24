@@ -2,7 +2,7 @@ import pendulum
 import json
 import asyncio
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
@@ -237,6 +237,8 @@ def biodiversity_metadata_ingestion():
         import_genome_notes_task >> start_ingestion_job
         import_annotations_task >> start_ingestion_job
 
+        # dtol uses legacy alias names; the physical index suffixes
+        # (data_portal / tracking_status / specimens) are identical across all projects.
         if project_name == "dtol":
             data_portal_alias_name = "data_portal"
             tracking_status_alias_name = "tracking_status_index"
