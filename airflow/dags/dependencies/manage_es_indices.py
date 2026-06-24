@@ -65,3 +65,17 @@ def prune_old_indices(es, suffix, keep=2):
         es.indices.delete(index=name)
         logger.info("Deleted old index %s", name)
     return to_delete
+
+
+def rotate(host, password, date_prefix, specs, keep=2):
+    """Rotate aliases onto today's indices and prune old generations.
+
+    specs: list of (alias_name, index_suffix). For each pair, move the alias
+    onto '{date_prefix}_{index_suffix}', then prune that suffix to `keep`
+    newest generations.
+    """
+    es = get_client(host, password)
+    for alias, suffix in specs:
+        today_index = f"{date_prefix}_{suffix}"
+        swap_alias_to_latest(es, alias, today_index)
+        prune_old_indices(es, suffix, keep=keep)

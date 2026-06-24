@@ -151,3 +151,48 @@ def test_prune_only_touches_matching_suffix():
     deleted = mei.prune_old_indices(es, "specimens", keep=2)
     assert deleted == ["2026-06-18_specimens"]
     assert "2026-06-01_data_portal" in es.indices.indices
+
+
+def test_rotate_swaps_and_prunes_with_dtol_alias_mapping(monkeypatch):
+    # dtol: alias name "organisms_test" maps to physical suffix "specimens".
+    es = FakeES(
+        indices=[
+            "2026-06-24_specimens",
+            "2026-06-20_specimens",
+            "2026-06-18_specimens",
+        ],
+        aliases={"organisms_test": {"2026-06-18_specimens"}},
+    )
+    monkeypatch.setattr(mei, "get_client", lambda host, password: es)
+
+    mei.rotate("host", "pw", "2026-06-24", [("organisms_test", "specimens")], keep=2)
+
+    # Alias moved onto today only
+    assert es.indices.aliases["organisms_test"] == {"2026-06-24_specimens"}
+    # Pruned to the two newest generations
+    assert es.indices.indices == {"2026-06-24_specimens", "2026-06-20_specimens"}
+
+
+def test_rotate_processes_every_spec(monkeypatch):
+    es = FakeES(
+        indices=[
+            "2026-06-24_data_portal", "2026-06-20_data_portal", "2026-06-18_data_portal",
+            "2026-06-24_tracking_status", "2026-06-20_tracking_status", "2026-06-18_tracking_status",
+        ],
+        aliases={
+            "data_portal": {"2026-06-18_data_portal"},
+            "tracking_status": {"2026-06-18_tracking_status"},
+        },
+    )
+    monkeypatch.setattr(mei, "get_client", lambda host, password: es)
+
+    mei.rotate(
+        "host", "pw", "2026-06-24",
+        [("data_portal", "data_portal"), ("tracking_status", "tracking_status")],
+        keep=2,
+    )
+
+    assert es.indices.aliases["data_portal"] == {"2026-06-24_data_portal"}
+    assert es.indices.aliases["tracking_status"] == {"2026-06-24_tracking_status"}
+    assert "2026-06-18_data_portal" not in es.indices.indices
+    assert "2026-06-18_tracking_status" not in es.indices.indices
