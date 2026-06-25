@@ -2,7 +2,7 @@ import pendulum
 import json
 import asyncio
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from airflow.decorators import dag, task
 from airflow.io.path import ObjectStoragePath
@@ -19,7 +19,12 @@ from dependencies.biodiversity_projects import (
 )
 
 from dependencies.common_functions import start_apache_beam
-from dependencies import import_tol_qc, import_images, import_annotations
+from dependencies import (
+    import_tol_qc,
+    import_images,
+    import_annotations,
+    manage_es_indices,
+)
 
 
 @task
@@ -120,8 +125,6 @@ def biodiversity_metadata_ingestion():
         op_kwargs={"github_token": github_token},
     )
     date_prefix = datetime.today().strftime("%Y-%m-%d")
-    yesterday_day_prefix = (datetime.today() - timedelta(days=1)).strftime("%Y-%m-%d")
-    two_days_prefix = (datetime.today() - timedelta(days=2)).strftime("%Y-%m-%d")
     for project_name, subprojects in {
         "gbdp": gbdp_projects,
         "erga": erga_projects,
@@ -234,6 +237,8 @@ def biodiversity_metadata_ingestion():
         import_genome_notes_task >> start_ingestion_job
         import_annotations_task >> start_ingestion_job
 
+        # dtol uses legacy alias names; the physical index suffixes
+        # (data_portal / tracking_status / specimens) are identical across all projects.
         if project_name == "dtol":
             data_portal_alias_name = "data_portal"
             tracking_status_alias_name = "tracking_status_index"
@@ -243,89 +248,27 @@ def biodiversity_metadata_ingestion():
             tracking_status_alias_name = "tracking_status"
             specimens_alias_name = "specimens"
 
-        change_aliases_json = {
-            "actions": [
-                {
-                    "add": {
-                        "index": f"{date_prefix}_data_portal",
-                        "alias": f"{data_portal_alias_name}",
-                    }
-                },
-                {
-                    "remove": {
-                        "index": f"{yesterday_day_prefix}_data_portal",
-                        "alias": f"{data_portal_alias_name}",
-                    }
-                },
-                {
-                    "add": {
-                        "index": f"{date_prefix}_tracking_status",
-                        "alias": f"{tracking_status_alias_name}",
-                    }
-                },
-                {
-                    "remove": {
-                        "index": f"{yesterday_day_prefix}_tracking_status",
-                        "alias": f"{tracking_status_alias_name}",
-                    }
-                },
-                {
-                    "add": {
-                        "index": f"{date_prefix}_specimens",
-                        "alias": f"{specimens_alias_name}",
-                    }
-                },
-                {
-                    "remove": {
-                        "index": f"{yesterday_day_prefix}_specimens",
-                        "alias": f"{specimens_alias_name}",
-                    }
-                },
-            ]
-        }
-        change_aliases_command = (
-            f"curl -X POST '{base_url}/_aliases' "
-            f"-H 'Content-Type: application/json' "
-            f"-d '{json.dumps(change_aliases_json)}'"
-        )
-        change_aliases_task = BashOperator(
-            task_id=f"{project_name}-change-aliases",
-            bash_command=change_aliases_command,
+        rotate_aliases_task = PythonOperator(
+            task_id=f"{project_name}-rotate-aliases",
+            python_callable=manage_es_indices.rotate,
+            op_kwargs={
+                "host": host,
+                "password": password,
+                "date_prefix": date_prefix,
+                "specs": [
+                    (data_portal_alias_name, "data_portal"),
+                    (tracking_status_alias_name, "tracking_status"),
+                    (specimens_alias_name, "specimens"),
+                ],
+            },
         )
 
         (
-            change_aliases_task
+            rotate_aliases_task
             << additional_task.override(task_id=f"{project_name}-additional-task")(
                 host, password, project_name
             )
             << start_ingestion_job
-        )
-
-        remove_data_portal_index_command = (
-            f"curl -X DELETE '{base_url}/" f"{two_days_prefix}_data_portal'"
-        )
-        remove_tracking_status_index_command = (
-            f"curl -X DELETE '{base_url}/" f"{two_days_prefix}_tracking_status'"
-        )
-        remove_specimens_index_command = (
-            f"curl -X DELETE '{base_url}/" f"{two_days_prefix}_specimens'"
-        )
-        remove_data_portal_index_task = BashOperator(
-            task_id=f"{project_name}-remove-data-portal-index",
-            bash_command=remove_data_portal_index_command,
-        )
-        remove_tracking_status_index_task = BashOperator(
-            task_id=f"{project_name}-remove-tracking-status-index",
-            bash_command=remove_tracking_status_index_command,
-        )
-        remove_specimens_index_task = BashOperator(
-            task_id=f"{project_name}-remove-specimens-index",
-            bash_command=remove_specimens_index_command,
-        )
-        change_aliases_task >> (
-            remove_data_portal_index_task,
-            remove_tracking_status_index_task,
-            remove_specimens_index_task,
         )
         CREATE_SAMPING_MAP_BASE_VIEW = f"""
         CREATE OR REPLACE VIEW 
@@ -386,7 +329,7 @@ def biodiversity_metadata_ingestion():
                 }
             },
         )
-        (change_aliases_task >> sampling_map_base_view >> sampling_map_aggregated_view)
+        (rotate_aliases_task >> sampling_map_base_view >> sampling_map_aggregated_view)
 
         CREATE_METADATA_AGGREGATED_VIEW = f"""
                CREATE OR REPLACE VIEW 
@@ -568,7 +511,7 @@ def biodiversity_metadata_ingestion():
             },
         )
         (
-            change_aliases_task
+            rotate_aliases_task
             >> metadata_aggregated_view
             >> rawdata_aggregated_view
             >> table_data_view
