@@ -6,7 +6,9 @@ from airflow.providers.google.cloud.operators.dataflow import (
 def start_apache_beam(
     biodiversity_project_name,
     template_tag="20250701-103716",
-    job_name="biodiversity-ingestion-2025-07-01"
+    job_name="biodiversity-ingestion-2025-07-01",
+    input_path=None,
+    output_path=None,
 ):
     gc_project_name = "prj-ext-prod-biodiv-data-in"
     region = "europe-west2"
@@ -14,10 +16,10 @@ def start_apache_beam(
         "launchParameter": {
             "jobName": job_name,
             "parameters": {
-                "input_path": f"gs://{gc_project_name}-"
-                f"{biodiversity_project_name}/*jsonl",
-                "output_path": f"gs://{gc_project_name}-"
-                f"{biodiversity_project_name}",
+                "input_path": input_path
+                or f"gs://{gc_project_name}-{biodiversity_project_name}/*jsonl",
+                "output_path": output_path
+                or f"gs://{gc_project_name}-{biodiversity_project_name}",
                 "bq_dataset_name": biodiversity_project_name,
             },
             "environment": {
@@ -42,3 +44,16 @@ def start_apache_beam(
         location=region,
         wait_until_finished=True,
     )
+
+
+def check_field_existence(record):
+    values = []
+    units = []
+    ontology_terms = []
+    for element in record:
+        values.append(element.get("text", ""))
+        if "unit" in element:
+            units.append(element["unit"])
+        if "ontologyTerms" in element and element["ontologyTerms"]:
+            ontology_terms.append(element["ontologyTerms"][0])
+    return ", ".join(values), ", ".join(units), ", ".join(ontology_terms)
