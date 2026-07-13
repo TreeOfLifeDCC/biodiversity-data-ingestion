@@ -181,8 +181,8 @@ def index_to_es(
 
 
 @dag(
-    schedule="0 11 * * *",
-    start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
+    # schedule="0 11 * * *",
+    # start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
     catchup=False,
     tags=["aegis_metadata_ingestion"],
 )
