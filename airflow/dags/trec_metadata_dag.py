@@ -109,7 +109,7 @@ def trec_metadata_ingestion():
     # Start Beam / Dataflow ingestion
     template_tag = Variable.get(
         "trec_dataflow_template_tag",
-        default_var="20250701-103716",
+        default_var="20260722-133017",
     )
     start_ingestion_job = start_apache_beam(
         "trec",
