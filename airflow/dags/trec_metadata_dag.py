@@ -19,24 +19,43 @@ def get_trec_metadata(
     """
     Fetch TREC metadata from BioSamples and write it to GCS as JSONL.
     """
+    import logging
+    import resource
+    import time
+
     from dependencies import collect_metadata_trec
     from google.cloud import storage
 
-    metadata = collect_metadata_trec.main(project_tag)
+    log = logging.getLogger(__name__)
+
+    def _rss_mb() -> float:
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+
     client = storage.Client(project="prj-ext-prod-biodiv-data-in")
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name or f"{project_tag}.jsonl")
 
-    content = ""
-    for _, record in metadata.items():
-        content += f"{json.dumps(record, default=str)}\n"
+    started = time.monotonic()
 
-    blob.upload_from_string(content, content_type="application/json")
+    count = 0
+    with blob.open("w", content_type="application/json") as fh:
+        for record in collect_metadata_trec.iter_metadata(project_tag):
+            fh.write(f"{json.dumps(record, default=str)}\n")
+            count += 1
+            if count % 200 == 0:
+                log.info(
+                    "progress: %s records | peak RSS %.0f MB | %.0fs elapsed",
+                    count,
+                    _rss_mb(),
+                    time.monotonic() - started,
+                )
+
+
 
 
 @task
 def update_data_portal_alias(
-    es_host: str, es_password: str, index_name: str, alias_name: str = "data_portal"
+    es_host: str, es_password: str, index_name: str, alias_name: str = "data_portal_alias"
 ) -> None:
     """
     Point the alias at the new index, removing it from any existing indices.
@@ -53,6 +72,14 @@ def update_data_portal_alias(
         actions.append({"add": {"index": index_name, "alias": alias_name}})
         es.indices.update_aliases(body={"actions": actions})
     else:
+        if es.indices.exists(index=alias_name):
+            raise ValueError(
+                f"Cannot create alias '{alias_name}': a concrete index with that "
+                f"exact name already exists on this cluster. Either pick a "
+                f"different alias via the Airflow Variable "
+                f"'trec_data_portal_alias', or remove/reindex the existing "
+                f"'{alias_name}' index."
+            )
         es.indices.put_alias(index=index_name, name=alias_name)
 
 
@@ -100,6 +127,8 @@ def trec_metadata_ingestion():
     )
     data_portal_mapping = Variable.get("trec_elasticsearch_data_portal_mapping")
 
+    alias_name = Variable.get("trec_data_portal_alias", default_var="data_portal_alias")
+
     date_prefix = datetime.today().strftime("%Y-%m-%d")
     two_days_prefix = (datetime.today() - timedelta(days=2)).strftime("%Y-%m-%d")
 
@@ -123,6 +152,7 @@ def trec_metadata_ingestion():
         es_host=host,
         es_password=password,
         index_name=f"{date_prefix}_data_portal",
+        alias_name=alias_name,
     )
 
     remove_data_portal_index_command = (
