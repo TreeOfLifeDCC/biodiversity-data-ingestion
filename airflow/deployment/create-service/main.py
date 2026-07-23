@@ -14,6 +14,14 @@ from google.cloud.orchestration.airflow.service_v1.types import (
 )
 
 
+# Python packages installed while Composer is provisioned.
+PYPI_PACKAGES = {
+    "elasticsearch": "[async]==8.17.1",
+    "beautifulsoup4": "",
+    "tenacity": "",
+    "lxml": "",
+}
+
 def _require_env(name: str) -> str:
     v = os.environ.get(name, "").strip()
     if not v:
@@ -97,6 +105,11 @@ def start_composer_environment(http_request):
         triggerer=triggerer,
     )
 
+    software_config = SoftwareConfig(
+        image_version=image_version,
+        pypi_packages=PYPI_PACKAGES,
+    )
+
     env_config = EnvironmentConfig(
         workloads_config=workloads,
         software_config=SoftwareConfig(
@@ -122,7 +135,9 @@ def start_composer_environment(http_request):
         )
         op = client.create_environment(request=create_req)
         return (
-            f"create requested: {env_resource}\noperation: {op.operation.name}\n",
+            f"create requested: {env_resource}\n"
+            f"operation: {op.operation.name}\n",
+            f"pypi packages: {PYPI_PACKAGES}\n",
             200,
         )
 
