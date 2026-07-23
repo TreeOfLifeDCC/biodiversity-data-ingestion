@@ -21,9 +21,9 @@
     {
       "name": "bq_dataset_name",
       "label": "BigQuery dataset name",
-      "helpText": "BigQuery dataset name, can only be one of erga, dtol, asg, gbdp",
+      "helpText": "BigQuery dataset name, can only be one of erga, dtol, asg, gbdp, trec",
       "regexes": [
-        "(^erga$|^dtol$|^asg$|^gbdp$)"
+        "(^erga$|^dtol$|^asg$|^gbdp$|^trec$)"
       ]
     }
   ]
