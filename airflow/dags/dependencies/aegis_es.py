@@ -6,7 +6,7 @@ Handles index creation, mapping, bulk indexing, alias swapping, and cleanup.
 
 import logging
 
-from elasticsearch import Elasticsearch, NotFoundError
+from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk
 
 logger = logging.getLogger(__name__)
@@ -180,41 +180,30 @@ DATA_PORTAL_MAPPING = {
         "sampleCount":        {"type": "integer"},
         "locations":          {"type": "geo_point"},
         "countries":          {"type": "keyword"},
+        # Flat Ensembl-annotation records, produced by import_annotations.py
+        # from _data/aegis/species.yaml (same shape as the dtol/erga/asg/gbdp
+        # manifests). One nested entry per assembly accession.
         "annotations": {
             "type": "nested",
             "properties": {
-                "assemblyAccession": {"type": "keyword"},
-                "assemblyName":      {"type": "keyword"},
-                "assemblyLevel":     {"type": "keyword"},
-                "biosampleId":       {"type": "keyword"},
-                "strain":            {"type": "keyword"},
-                "strainType":        {"type": "keyword"},
-                "speciesKey":        {"type": "keyword"},
-                "scientificName":    _TEXT_KW,
-                "commonName":        _TEXT_KW,
-                "provider":          {"type": "keyword"},
-                "release":           {"type": "keyword"},
-                "annotationFiles": {
+                "species":           _TEXT_KW,
+                "accession":         {"type": "keyword"},
+                "tax_id":            {"type": "keyword"},
+                "annotation": {
                     "properties": {
-                        "category": {"type": "keyword"},
-                        "name":     {"type": "keyword"},
-                        "path":     {"type": "keyword"},
+                        "GTF":  {"type": "keyword"},
+                        "GFF3": {"type": "keyword"},
                     },
                 },
-                "homologyFiles": {
-                    "properties": {
-                        "category": {"type": "keyword"},
-                        "name":     {"type": "keyword"},
-                        "path":     {"type": "keyword"},
-                    },
-                },
-                "assemblyFiles": {
-                    "properties": {
-                        "category": {"type": "keyword"},
-                        "name":     {"type": "keyword"},
-                        "path":     {"type": "keyword"},
-                    },
-                },
+                "proteins":          {"properties": {"FASTA": {"type": "keyword"}}},
+                "transcripts":       {"properties": {"FASTA": {"type": "keyword"}}},
+                "softmasked_genome": {"properties": {"FASTA": {"type": "keyword"}}},
+                "repeat_library":    {"properties": {"FASTA": {"type": "keyword"}}},
+                "other_data":        {"properties": {"ftp_dumps": {"type": "keyword"}}},
+                "view_in_browser":   {"type": "keyword"},
+                "annotation_method": {"type": "keyword"},
+                "busco_score":       {"type": "keyword"},
+                "busco_lineage":     {"type": "keyword"},
             },
         },
     },
@@ -272,43 +261,3 @@ def bulk_index_documents(
             logger.error("Bulk index error: %s", err)
         raise RuntimeError(f"Bulk indexing had {len(errors)} errors")
     logger.info("Indexed %d documents into %s", success, index_name)
-
-
-def swap_aliases(
-    es: Elasticsearch,
-    alias_configs: list[dict],
-) -> None:
-    """
-    Atomically swap aliases to point to new indices.
-
-    alias_configs is a list of dicts with keys: alias, new_index.
-    Removes the alias from any indices currently holding it, then adds
-    it to new_index — all in a single atomic update_aliases call.
-    """
-    actions = []
-    for cfg in alias_configs:
-        alias_name = cfg["alias"]
-        # Find all indices currently holding this alias and remove them
-        try:
-            current = es.indices.get_alias(name=alias_name)
-            for existing_index in current:
-                if existing_index != cfg["new_index"]:
-                    actions.append(
-                        {"remove": {"index": existing_index, "alias": alias_name}}
-                    )
-        except NotFoundError:
-            pass  # Alias doesn't exist yet (first run)
-        actions.append({"add": {"index": cfg["new_index"], "alias": alias_name}})
-
-    es.indices.update_aliases(actions=actions)
-    logger.info("Alias swap complete: %s", [c["alias"] for c in alias_configs])
-
-
-def delete_index_if_exists(es: Elasticsearch, index_name: str) -> None:
-    """Delete an index only if it exists."""
-    try:
-        if es.indices.exists(index=index_name):
-            es.indices.delete(index=index_name)
-            logger.info("Deleted index %s", index_name)
-    except NotFoundError:
-        pass

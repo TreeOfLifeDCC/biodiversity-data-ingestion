@@ -4,6 +4,11 @@ AEGIS metadata ingestion DAG.
 Fetches sample metadata from BioSamples + ENA for project PRJEB80366,
 builds Elasticsearch documents for the `samples` and `data_portal` indices,
 and indexes them with alias rotation.
+
+Ensembl annotations are produced by `import_annotations.py` from the
+`_data/aegis/species.yaml` file in the Ensembl/projects.ensembl.org GitHub
+repo (same producer + format as the dtol/erga/asg/gbdp manifests) and joined
+onto species docs by tax_id.
 """
 
 import logging
@@ -11,9 +16,12 @@ import logging
 import pendulum
 
 from airflow.decorators import dag, task
+from airflow.models import Variable
+from airflow.operators.python import PythonOperator
 
 logger = logging.getLogger(__name__)
 
+from dependencies import import_annotations, manage_es_indices
 from dependencies.aegis_projects import aegis_projects
 
 STUDY_ID = "PRJEB80366"
@@ -36,7 +44,7 @@ def fetch_metadata() -> dict:
 
 
 @task
-def build_samples_docs(metadata: dict, annotations: dict) -> list[dict]:
+def build_samples_docs(metadata: dict) -> list[dict]:
     """Filter by ERC000053 checklist, build per-sample ES documents."""
     import json
 
@@ -45,15 +53,6 @@ def build_samples_docs(metadata: dict, annotations: dict) -> list[dict]:
         filter_by_checklist,
         validate_sample,
     )
-
-    # Reference specimens flagged as `biosample_id` on annotation records get
-    # `trackingSystem = "Annotation Complete"`.
-    annotated_biosample_ids = {
-        rec["biosampleId"]
-        for records in (annotations or {}).values()
-        for rec in records
-        if rec.get("biosampleId")
-    }
 
     valid_metadata, wrong_checklist = filter_by_checklist(metadata)
 
@@ -80,9 +79,7 @@ def build_samples_docs(metadata: dict, annotations: dict) -> list[dict]:
 
     common_name_cache: dict[str, str | None] = {}
     return [
-        build_sample_doc(
-            sample_id, record, common_name_cache, annotated_biosample_ids
-        )
+        build_sample_doc(sample_id, record, common_name_cache)
         for sample_id, record in valid_metadata.items()
     ]
 
@@ -90,29 +87,24 @@ def build_samples_docs(metadata: dict, annotations: dict) -> list[dict]:
 @task(multiple_outputs=False)
 def fetch_annotations() -> dict:
     """
-    Load the Ensembl annotation manifest from the path stored in the Airflow
-    Variable `aegis_annotations_path` (supports local path, https://, or
-    gs:// URIs). Returns {taxId: [record, ...]}; empty dict when the
-    Variable is unset, so the species-doc build degrades gracefully.
+    Load the `aegis.jsonl` annotation manifest (produced upstream by
+    `import_annotations_task`) from GCS. Returns {taxId: [record, ...]};
+    empty dict on failure so the species-doc build degrades gracefully.
 
     `multiple_outputs=False` is required: TaskFlow would otherwise infer it
     from the `-> dict` annotation and reject integer taxId keys.
     """
-    from airflow.models import Variable
+    from dependencies.aegis_annotations import load_annotation_manifest
 
-    from dependencies.aegis_annotations import (
-        build_annotation_records,
-        load_annotations,
-    )
-
-    path = Variable.get("aegis_annotations_path", default_var="")
-    if not path:
+    try:
+        return load_annotation_manifest()
+    except Exception as exc:  # missing manifest, GCS/permission error, etc.
         logger.warning(
-            "Airflow Variable 'aegis_annotations_path' is unset; "
-            "data_portal docs will be built without annotations."
+            "Could not load aegis annotation manifest (%s); data_portal docs "
+            "will be built without annotations.",
+            exc,
         )
         return {}
-    return build_annotation_records(load_annotations(path))
 
 
 @task
@@ -134,8 +126,8 @@ def index_to_es(
     samples_docs: list[dict],
     data_portal_docs: list[dict],
 ) -> None:
-    """Create indices, bulk index documents, swap aliases, clean up old indices."""
-    from datetime import datetime, timedelta
+    """Create indices, bulk index documents, rotate aliases, prune old indices."""
+    from datetime import datetime
 
     from airflow.models import Variable
 
@@ -143,19 +135,15 @@ def index_to_es(
         get_es_client,
         create_index_with_mapping,
         bulk_index_documents,
-        # swap_aliases,         # TODO: uncomment for production
-        # delete_index_if_exists,
         SAMPLES_MAPPING,
         DATA_PORTAL_MAPPING,
     )
+    from dependencies import manage_es_indices
 
     host = Variable.get("aegis_elasticsearch_host")
     password = Variable.get("aegis_elasticsearch_password")
 
-    now = datetime.utcnow()
-    today = now.strftime("%Y-%m-%d")
-    two_days_ago = (now - timedelta(days=2)).strftime("%Y-%m-%d")
-
+    today = datetime.utcnow().strftime("%Y-%m-%d")
     samples_index = f"{today}_samples"
     data_portal_index = f"{today}_data_portal"
 
@@ -169,20 +157,24 @@ def index_to_es(
     bulk_index_documents(es, samples_index, samples_docs, id_field="accession")
     bulk_index_documents(es, data_portal_index, data_portal_docs, id_field="taxId")
 
-    # TODO: uncomment for production (Composer) — skipped during local testing
-    #       to avoid touching existing MVP aliases
-    # swap_aliases(es, [
-    #     {"alias": "samples", "new_index": samples_index},
-    #     {"alias": "data_portal", "new_index": data_portal_index},
-    # ])
-    #
-    # delete_index_if_exists(es, f"{two_days_ago}_samples")
-    # delete_index_if_exists(es, f"{two_days_ago}_data_portal")
+    # Rotate aliases onto today's indices and prune to the 2 newest
+    # generations — same strategy as biodiversity_metadata_dag. `rotate`
+    # builds its own client and hard-prefixes https://, so pass a bare host.
+    rotate_host = host.replace("https://", "").replace("http://", "")
+    manage_es_indices.rotate(
+        host=rotate_host,
+        password=password,
+        date_prefix=today,
+        specs=[("samples", "samples"), ("data_portal", "data_portal")],
+        keep=2,
+    )
 
 
 @dag(
-    # schedule="0 11 * * *",
-    # start_date=pendulum.datetime(2025, 1, 1, tz="UTC"),
+    schedule="0 7 * * *",
+    #schedule_interval=None,
+    start_date=pendulum.datetime(2025, 1, 1, tz="Europe/London"),
+
     catchup=False,
     tags=["aegis_metadata_ingestion"],
 )
@@ -191,9 +183,18 @@ def aegis_metadata_ingestion():
     This DAG pulls data from ENA (PRJEB80366) and BioSamples and builds
     Elasticsearch indices for the AEGIS data portal.
     """
+    github_token = Variable.get("github_token")
+    import_annotations_task = PythonOperator(
+        task_id="import_annotations_task",
+        python_callable=import_annotations.main,
+        op_kwargs={"github_token": github_token, "projects": ["aegis"]},
+    )
+
     metadata = fetch_metadata()
     annotations = fetch_annotations()
-    samples = build_samples_docs(metadata, annotations)
+    import_annotations_task >> annotations
+
+    samples = build_samples_docs(metadata)
     data_portal = build_data_portal_docs(metadata, annotations)
     index_to_es(samples, data_portal)
 

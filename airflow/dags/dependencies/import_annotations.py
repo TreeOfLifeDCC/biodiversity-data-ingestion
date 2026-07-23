@@ -27,6 +27,7 @@ PROJECT_SOURCES = {
     "dtol": ["darwin_tree_of_life"],
     "erga": ["darwin_tree_of_life", "erga_bge", "erga_pilot"],
     "asg": ["asg"],
+    "aegis": ["aegis"],
     "gbdp": [
         "darwin_tree_of_life",
         "erga_bge",
@@ -56,6 +57,9 @@ def build_record(entry: dict, tax_id: str) -> dict:
         "repeat_library": {"FASTA": repeat} if repeat else None,
         "other_data": {"ftp_dumps": entry.get("ftp_dumps")},
         "view_in_browser": entry.get("beta_link"),
+        "annotation_method": entry.get("annotation_method"),
+        "busco_score": entry.get("busco_score"),
+        "busco_lineage": entry.get("busco_lineage"),
     }
 
 
@@ -154,10 +158,14 @@ def write_jsonl(project_name, by_tax):
             fh.write(json.dumps({"annotations": annotations, "tax_id": tax_id}) + "\n")
 
 
-def main(github_token):
-    """Build and upload all four annotation manifests."""
+def main(github_token, projects=None):
+    """Build and upload annotation manifests.
+
+    `projects` optionally restricts which manifests are built (e.g. ["aegis"]
+    so the AEGIS DAG can refresh only its own manifest); defaults to all.
+    """
     cache = {}
-    for project_name in PROJECT_SOURCES:
+    for project_name in (projects or PROJECT_SOURCES):
         by_tax = build_project(project_name, github_token, cache)
         write_jsonl(project_name, by_tax)
         logger.info("Wrote %s.jsonl (%d taxa)", project_name, len(by_tax))
