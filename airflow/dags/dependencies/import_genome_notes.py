@@ -16,6 +16,19 @@ EBI_API_BASE = "https://www.ebi.ac.uk/ena/browser/api/xml/"
 MAX_CONCURRENT_REQUESTS = 1
 REQUEST_TIMEOUT = 30.0
 
+# The Wellcome Open Research API rate-limits bursts of requests with HTTP 429,
+# and once tripped it keeps returning 429 for a cooldown window well over a
+# minute. Every fetch() in this module hits that host, so we (1) proactively
+# space requests apart to stay under the limit and (2) retry transient statuses
+# with exponential backoff (honouring Retry-After) long enough to ride out a
+# cooldown. Tune REQUEST_DELAY_S up if 429s still appear, down if the task is
+# too slow.
+RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+REQUEST_DELAY_S = 1.0
+MAX_RETRIES = 6
+BACKOFF_BASE_S = 2.0
+BACKOFF_MAX_S = 60.0
+
 
 def clean_study_id(study_id: str) -> str:
     if "?" in study_id:
@@ -25,19 +38,64 @@ def clean_study_id(study_id: str) -> str:
     return study_id
 
 
+def _retry_delay(response_headers: Any, attempt: int) -> float:
+    retry_after = response_headers.get("Retry-After") if response_headers else None
+    if retry_after and str(retry_after).isdigit():
+        return float(retry_after)
+    return min(BACKOFF_BASE_S * (2 ** attempt), BACKOFF_MAX_S)
+
+
 async def fetch(
-    session: aiohttp.ClientSession, url: str, headers: Optional[Dict[str, str]] = None
+    session: aiohttp.ClientSession,
+    url: str,
+    headers: Optional[Dict[str, str]] = None,
+    force_text: bool = False,
 ) -> Any:
-    try:
-        async with session.get(url, headers=headers) as response:
-            response.raise_for_status()
-            return (
-                await response.json()
-                if response.content_type == "application/json"
-                else await response.text()
+    # Proactively throttle: space every request apart so we stay under the
+    # API's rate limit rather than tripping it and relying on retries.
+    if REQUEST_DELAY_S:
+        await asyncio.sleep(REQUEST_DELAY_S)
+
+    last_exc: Optional[Exception] = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            async with session.get(url, headers=headers) as response:
+                if response.status in RETRYABLE_STATUSES and attempt < MAX_RETRIES - 1:
+                    delay = _retry_delay(response.headers, attempt)
+                    print(
+                        f"{response.status} for {url}; retrying in {delay:.1f}s "
+                        f"(attempt {attempt + 1}/{MAX_RETRIES})"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                response.raise_for_status()
+                # HTML file endpoints sometimes mislabel content as JSON, so
+                # callers that want raw text force it rather than trusting
+                # content_type.
+                if force_text:
+                    return await response.text()
+                return (
+                    await response.json()
+                    if response.content_type == "application/json"
+                    else await response.text()
+                )
+        except aiohttp.ClientResponseError:
+            # A raised HTTP status here is permanent (retryable statuses are
+            # handled above and looped): 403/404/401 etc. won't change on retry,
+            # so fail fast instead of burning the whole backoff schedule per URL.
+            raise
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            # Transient transport failures (connection reset, timeout) — retry.
+            last_exc = e
+            if attempt >= MAX_RETRIES - 1:
+                break
+            delay = min(BACKOFF_BASE_S * (2 ** attempt), BACKOFF_MAX_S)
+            print(
+                f"Request error for {url}: {e}; retrying in {delay:.1f}s "
+                f"(attempt {attempt + 1}/{MAX_RETRIES})"
             )
-    except Exception as e:
-        raise
+            await asyncio.sleep(delay)
+    raise last_exc or RuntimeError(f"Exhausted retries fetching {url}")
 
 
 async def get_auth_token(session: aiohttp.ClientSession) -> str:
@@ -195,11 +253,14 @@ def parse_study_xml(xml_data: str, study_ids: str) -> Dict[str, str]:
 
 async def fetch_html(session: aiohttp.ClientSession, url: str) -> Optional[str]:
     try:
-        async with session.get(url) as response:
-            return await response.text()
+        # Reuse fetch's throttle/retry, but HTML file endpoints can mislabel the
+        # response as JSON, so always read the body as text.
+        return await fetch(session, url, force_text=True)
     except Exception as e:
+        # A single unreachable page must not fail the whole 1810-article batch;
+        # parse_genome_notes skips falsy html_text.
         print(f"Failed to fetch {url}: {e}")
-        raise
+        return None
 
 
 async def parse_genome_notes(
@@ -222,11 +283,11 @@ async def parse_genome_notes(
 
     study_id_map = {}
     for index, (article, html_text) in enumerate(zip(articles, html_texts)):
-        print(
-            f"Collecting study IDs from article {index + 1}/{len(articles)}",
-            end="\r",
-            flush=True,
-        )
+        # Newline-terminated progress every 100 articles: a "\r" spinner is
+        # invisible in Cloud Logging (records split on newlines), making this
+        # CPU-bound parse loop look hung.
+        if index % 100 == 0 or index + 1 == len(articles):
+            print(f"Collecting study IDs from article {index + 1}/{len(articles)}")
         if not html_text:
             continue
         warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
@@ -309,7 +370,8 @@ async def parse_genome_notes(
                 }
 
                 processed_count += 1
-                print(f"Processed {processed_count} genome notes", end="\r", flush=True)
+                if processed_count % 100 == 0:
+                    print(f"Processed {processed_count} genome notes")
                 genome_notes[tax_id].append(genome_note)
 
     print(
@@ -360,7 +422,11 @@ async def main():
             print(f"Processing complete! Total entries: {len(genome_notes)}")
             return genome_notes
         except Exception as e:
+            # Never swallow the error into a None return: the caller does
+            # genome_notes.items() and would otherwise crash with a misleading
+            # AttributeError that hides the real failure.
             print(f"An error occurred during processing: {e}")
+            raise
 
 async def fetch_page(session, base_url, params):
     """Fetch a single page asynchronously and return its JSON content."""
