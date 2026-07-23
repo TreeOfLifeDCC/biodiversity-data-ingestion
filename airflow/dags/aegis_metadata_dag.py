@@ -174,6 +174,7 @@ def index_to_es(
     schedule="0 7 * * *",
     #schedule_interval=None,
     start_date=pendulum.datetime(2025, 1, 1, tz="Europe/London"),
+
     catchup=False,
     tags=["aegis_metadata_ingestion"],
 )

@@ -84,8 +84,8 @@ def update_data_portal_alias(
 
 
 @dag(
-    schedule=None,
-    # start_date=pendulum.datetime(2025, 7, 2, tz="Europe/London"),
+    schedule="0 7 * * *",
+    start_date=pendulum.datetime(2026, 7, 22, tz="Europe/London"),
     catchup=False,
     tags=["trec_metadata_ingestion"],
 )
@@ -109,7 +109,7 @@ def trec_metadata_ingestion():
     # Start Beam / Dataflow ingestion
     template_tag = Variable.get(
         "trec_dataflow_template_tag",
-        default_var="20250701-103716",
+        default_var="20260722-133017",
     )
     start_ingestion_job = start_apache_beam(
         "trec",
