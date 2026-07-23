@@ -189,6 +189,21 @@ def _parse_float(value: str | None) -> float | None:
         return None
 
 
+def _valid_lat_lon(lat: float | None, lon: float | None) -> bool:
+    """True only if both coords are present and within geo_point bounds.
+
+    BioSamples occasionally carries out-of-range values (e.g. longitude
+    -2951.0); Elasticsearch rejects those for a `geo_point` field and fails
+    the whole bulk request, so such coordinates are dropped here.
+    """
+    return (
+        lat is not None
+        and lon is not None
+        and -90 <= lat <= 90
+        and -180 <= lon <= 180
+    )
+
+
 def _dedup(items: list[dict], key: str) -> list[dict]:
     """Deduplicate a list of dicts by a key field, preserving order."""
     seen = {}
@@ -289,6 +304,23 @@ def validate_sample(sample_id: str, sample: dict) -> list[dict]:
             "value": symbiont,
         })
 
+    # Out-of-range coordinates — present and parseable but outside geo_point
+    # bounds. These are dropped from the indexed `location` (ES would reject
+    # them), so flag them here for follow-up.
+    lat = _parse_float(extract_char(chars, "geographic location (latitude)"))
+    lon = _parse_float(extract_char(chars, "geographic location (longitude)"))
+    for field, value, low, high in (
+        ("geographic location (latitude)", lat, -90, 90),
+        ("geographic location (longitude)", lon, -180, 180),
+    ):
+        if value is not None and not (low <= value <= high):
+            issues.append({
+                "accession": accession,
+                "type": "out_of_range_coordinate",
+                "field": field,
+                "value": value,
+            })
+
     return issues
 
 
@@ -372,24 +404,15 @@ def build_sample_doc(
     sample_id: str,
     sample: dict,
     common_name_cache: dict,
-    annotated_biosample_ids: set[str] | None = None,
 ) -> dict:
     """
     Transform a single BioSamples record into a flat document for the
     `samples` ES index.  Extracts all ERC000053 checklist fields and
     collects any extra characteristics as custom_fields.
-
-    `annotated_biosample_ids`, when supplied, is the set of accessions that
-    appear as `biosample_id` on an annotation record. A sample in that set
-    is the reference specimen for an Ensembl build and gets its
-    `trackingSystem` promoted to "Annotation Complete".
     """
     chars = sample.get("characteristics", {})
     raw_tax_id = sample.get("taxId")
     accession = sample.get("accession", sample_id)
-    is_annotated = bool(
-        annotated_biosample_ids and accession in annotated_biosample_ids
-    )
 
     collection_date, collection_date_text = parse_iso_date_lenient(
         extract_char(chars, "collection date")
@@ -402,9 +425,7 @@ def build_sample_doc(
         "accession": accession,
         "taxId": int(raw_tax_id) if raw_tax_id is not None else None,
         "scientificName": extract_char(chars, "organism"),
-        "trackingSystem": (
-            "Annotation Complete" if is_annotated else compute_tracking_system(sample)
-        ),
+        "trackingSystem": compute_tracking_system(sample),
         # `projectTag` is the BioSamples filter tag (e.g. "AEGIS"); `projectName`
         # is the checklist's mandatory multi-valued `project name` characteristic.
         "projectTag": sample.get("project_tag") or sample.get("project_name"),
@@ -472,10 +493,11 @@ def build_sample_doc(
         common_name = _get_common_name(doc["scientificName"], common_name_cache)
     doc["commonName"] = common_name
 
-    # geo_point — omit key entirely if either coordinate is missing
+    # geo_point — omit key entirely if either coordinate is missing or
+    # out of range (ES rejects out-of-bounds geo_points).
     lat = _parse_float(extract_char(chars, "geographic location (latitude)"))
     lon = _parse_float(extract_char(chars, "geographic location (longitude)"))
-    if lat is not None and lon is not None:
+    if _valid_lat_lon(lat, lon):
         doc["location"] = {"lat": lat, "lon": lon}
 
     # Float fields — only include if parseable
@@ -561,7 +583,7 @@ def build_data_portal_docs(
             lon = _parse_float(
                 extract_char(chars, "geographic location (longitude)")
             )
-            if lat is not None and lon is not None:
+            if _valid_lat_lon(lat, lon):
                 locations.append({"lat": lat, "lon": lon})
 
             # Country

@@ -83,7 +83,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
         sleep(0.1)
         while "_embedded" in samples_response:
             for sample in samples_response["_embedded"]["samples"]:
-                sample["project_tag"] = project_tag
+                sample["project_name"] = project_tag
                 samples[sample["accession"]] = sample
             if "next" in samples_response["_links"]:
                 samples_response = requests.get(
@@ -138,7 +138,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
                     print(f"json decode error for {host_sample_id}")
                     continue
     for sample_id, record in additional_samples.items():
-        record["project_tag"] = project_tag
+        record["project_name"] = project_tag
         samples[sample_id] = record
 
     return samples
@@ -189,11 +189,11 @@ def join_metadata_and_data(
                     if response["status"] == 403:
                         continue
                     samples[sample_id] = response
-                    samples[sample_id]["project_tag"] = project_tag
+                    samples[sample_id]["project_name"] = project_tag
                     samples[sample_id][records_type] = data
                 except requests.exceptions.JSONDecodeError:
                     continue
             else:
                 samples[sample_id].setdefault(records_type, [])
                 samples[sample_id][records_type].extend(data)
-                samples[sample_id]["project_tag"] = project_tag
+                samples[sample_id]["project_name"] = project_tag

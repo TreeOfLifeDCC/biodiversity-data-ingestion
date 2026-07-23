@@ -21,6 +21,9 @@ def test_build_record_full_entry():
         "repeat_library": "https://ftp/repeat.fa",
         "ftp_dumps": "https://ftp/dir/",
         "beta_link": "https://beta.ensembl.org/species/abc",
+        "annotation_method": "Ensembl Genebuild",
+        "busco_score": "C:94.5%[S:87.7%,D:6.8%],F:3.0%,M:2.5%,n:2805",
+        "busco_lineage": "eudicotyledons_odb12",
     }
     rec = ia.build_record(entry, "72715")
     assert rec == {
@@ -34,6 +37,9 @@ def test_build_record_full_entry():
         "repeat_library": {"FASTA": "https://ftp/repeat.fa"},
         "other_data": {"ftp_dumps": "https://ftp/dir/"},
         "view_in_browser": "https://beta.ensembl.org/species/abc",
+        "annotation_method": "Ensembl Genebuild",
+        "busco_score": "C:94.5%[S:87.7%,D:6.8%],F:3.0%,M:2.5%,n:2805",
+        "busco_lineage": "eudicotyledons_odb12",
     }
 
 
@@ -51,6 +57,9 @@ def test_build_record_missing_optionals_and_coming_soon():
     assert rec["softmasked_genome"] == {"FASTA": None}
     assert rec["repeat_library"] is None
     assert rec["view_in_browser"] == "Coming soon!"
+    assert rec["annotation_method"] is None
+    assert rec["busco_score"] is None
+    assert rec["busco_lineage"] is None
 
 
 def test_project_sources_groupings():
@@ -61,6 +70,7 @@ def test_project_sources_groupings():
         "erga_pilot",
     ]
     assert ia.PROJECT_SOURCES["asg"] == ["asg"]
+    assert ia.PROJECT_SOURCES["aegis"] == ["aegis"]
     assert ia.PROJECT_SOURCES["gbdp"] == [
         "darwin_tree_of_life",
         "erga_bge",
@@ -228,7 +238,19 @@ def test_main_builds_all_projects_and_writes(monkeypatch):
     monkeypatch.setattr(ia, "write_jsonl", fake_write)
 
     ia.main("tok")
-    assert set(written.keys()) == {"dtol", "erga", "asg", "gbdp"}
+    assert set(written.keys()) == {"dtol", "erga", "asg", "aegis", "gbdp"}
+
+
+def test_main_projects_filter_builds_subset(monkeypatch):
+    written = {}
+
+    monkeypatch.setattr(
+        ia, "build_project", lambda name, token, cache, **kw: {"10": []}
+    )
+    monkeypatch.setattr(ia, "write_jsonl", lambda name, by_tax: written.__setitem__(name, by_tax))
+
+    ia.main("tok", projects=["aegis"])
+    assert set(written.keys()) == {"aegis"}
 
 
 def test_write_jsonl_serializes_lines(tmp_path, monkeypatch):
