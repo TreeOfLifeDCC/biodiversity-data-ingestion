@@ -5,7 +5,7 @@ from airflow.providers.google.cloud.operators.dataflow import (
 
 def start_apache_beam(
     biodiversity_project_name,
-    template_tag="20260722-133017",
+    template_tag="20260723-115924",
     job_name="biodiversity-ingestion-2026-07-22",
     input_path=None,
     output_path=None,
