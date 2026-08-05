@@ -80,7 +80,7 @@ def start_composer_environment(http_request):
         cpu=_float_env("WORKER_CPU", 2.0),
         memory_gb=_float_env("WORKER_MEM_GB", 8.0),
         storage_gb=_float_env("WORKER_STORAGE_GB", 10.0),
-        min_count=_int_env("WORKER_MIN_COUNT", 1),
+        min_count=_int_env("WORKER_MIN_COUNT", 2),
         max_count=_int_env("WORKER_MAX_COUNT", 10),
     )
 

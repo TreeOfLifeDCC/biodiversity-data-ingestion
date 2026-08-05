@@ -135,7 +135,8 @@ def biodiversity_metadata_ingestion():
             subproject_name, bucket_name = item["project_name"], item["bucket_name"]
             metadata_import_tasks.append(
                 get_metadata.override(
-                    task_id=f"{project_name}_{study_id}_get_metadata"
+                    task_id=f"{project_name}_{study_id}_get_metadata",
+                    pool="ebi_api",
                 )(study_id, subproject_name, bucket_name)
             )
         start_ingestion_job = start_apache_beam(project_name)
@@ -156,52 +157,57 @@ def biodiversity_metadata_ingestion():
             f"{project_name}_elasticsearch_specimens_mapping"
         )
 
+        def skip_if_exists(index_url: str, action_cmd: str, label: str) -> str:
+            return (
+                f"if [ \"$(curl -s -o /dev/null -w '%{{http_code}}' -I '{index_url}')\" = \"200\" ]; "
+                f"then echo 'index {label} already exists - skipping'; "
+                f"else {action_cmd}; fi"
+            )
+
         base_url = f"https://elastic:{password}@{host}"
 
-        create_data_portal_index_command = (
-            f"curl -X PUT '{base_url}/"
-            f"{date_prefix}_data_portal' "
-            f"-H 'Content-Type: "
-            f"application/json' "
-            f"-d '{settings}'"
-        )
-        create_tracking_status_index_command = (
-            f"curl -X PUT '{base_url}/"
-            f"{date_prefix}_"
-            f"tracking_status' "
-            f"-H 'Content-Type: "
-            f"application/json' "
-            f"-d '{settings}'"
-        )
-        create_specimens_index_command = (
-            f"curl -X PUT '{base_url}/"
-            f"{date_prefix}_specimens' "
-            f"-H 'Content-Type: "
-            f"application/json' -d '{settings}'"
+        create_data_portal_index_command = skip_if_exists(
+            f"{base_url}/{date_prefix}_data_portal",
+            f"curl -sf -X PUT '{base_url}/{date_prefix}_data_portal' "
+            f"-H 'Content-Type: application/json' -d '{settings}'",
+            f"{date_prefix}_data_portal",
         )
 
-        add_data_portal_mapping_command = (
-            f"curl -X PUT '{base_url}/"
-            f"{date_prefix}_data_portal/"
-            f"_mapping' "
-            f"-H 'Content-Type: "
-            f"application/json' "
-            f"-d '{data_portal_mapping}'"
+        add_data_portal_mapping_command = skip_if_exists(
+            f"{base_url}/{date_prefix}_data_portal",
+            f"curl -sf -X PUT '{base_url}/{date_prefix}_data_portal/_mapping' "
+            f"-H 'Content-Type: application/json' -d '{data_portal_mapping}'",
+            f"{date_prefix}_data_portal",
         )
-        add_tracking_status_mapping_command = (
-            f"curl -X PUT '{base_url}/"
-            f"{date_prefix}_tracking_status/"
-            f"_mapping' "
-            f"-H 'Content-Type: "
-            f"application/json' "
-            f"-d '{tracking_status_mapping}'"
+
+        create_tracking_status_index_command = skip_if_exists(
+            f"{base_url}/{date_prefix}_tracking_status",
+            f"curl -sf -X PUT '{base_url}/{date_prefix}_tracking_status' "
+            f"-H 'Content-Type: application/json' -d '{settings}'",
+            f"{date_prefix}_tracking_status",
         )
-        add_specimens_mapping_command = (
-            f"curl -X PUT '{base_url}/"
-            f"{date_prefix}_specimens/_mapping' "
-            f"-H 'Content-Type: application/json' "
-            f"-d '{specimens_mapping}'"
+
+        add_tracking_status_mapping_command = skip_if_exists(
+            f"{base_url}/{date_prefix}_tracking_status",
+            f"curl -sf -X PUT '{base_url}/{date_prefix}_tracking_status/_mapping' "
+            f"-H 'Content-Type: application/json' -d '{tracking_status_mapping}'",
+            f"{date_prefix}_tracking_status",
         )
+
+        create_specimens_index_command = skip_if_exists(
+            f"{base_url}/{date_prefix}_specimens",
+            f"curl -sf -X PUT '{base_url}/{date_prefix}_specimens' "
+            f"-H 'Content-Type: application/json' -d '{settings}'",
+            f"{date_prefix}_specimens",
+        )
+
+        add_specimens_mapping_command = skip_if_exists(
+            f"{base_url}/{date_prefix}_specimens/_mapping",
+            f"curl -sf -X PUT '{base_url}/{date_prefix}_specimens/_mapping' "
+            f"-H 'Content-Type: application/json' -d '{specimens_mapping}'",
+            f"{date_prefix}_specimens",
+        )
+
 
         (
             BashOperator(
