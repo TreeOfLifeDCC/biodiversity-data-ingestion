@@ -92,7 +92,7 @@ def get_genome_notes(**kwargs) -> None:
 
 
 @dag(
-    schedule="0 8 * * *",
+    schedule="0 7 * * *",
     start_date=pendulum.datetime(2025, 7, 1, tz="Europe/London"),
     catchup=False,
     tags=["biodiversity_metadata_ingestion"],
@@ -162,7 +162,7 @@ def biodiversity_metadata_ingestion():
 
         def build_index_body(mapping_obj: dict) -> str:
             body = dict(settings_obj)
-            body["mappings"] = {"dynamic": "strict", **mapping_obj}
+            body["mappings"] = {"dynamic": False, **mapping_obj}
             return json.dumps(body)
 
         def skip_if_exists(index_url: str, action_cmd: str, label: str) -> str:

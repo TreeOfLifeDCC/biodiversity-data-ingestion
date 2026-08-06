@@ -84,7 +84,7 @@ def update_data_portal_alias(
 
 
 @dag(
-    schedule="30 7 * * *",
+    schedule="30 9 * * *",
     start_date=pendulum.datetime(2026, 7, 22, tz="Europe/London"),
     catchup=False,
     tags=["trec_metadata_ingestion"],
