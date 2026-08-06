@@ -144,18 +144,26 @@ def biodiversity_metadata_ingestion():
         # Get Elasticsearch variables
         host = Variable.get(f"{project_name}_elasticsearch_host")
         password = Variable.get(f"{project_name}_elasticsearch_password")
-        settings = json.dumps(
-            Variable.get("elasticsearch_settings", deserialize_json=True)
+        settings_obj = Variable.get(
+            "elasticsearch_settings", deserialize_json=True
         )
         data_portal_mapping = Variable.get(
-            f"{project_name}_elasticsearch_data_portal_mapping"
+            f"{project_name}_elasticsearch_data_portal_mapping",
+            deserialize_json=True,
         )
         tracking_status_mapping = Variable.get(
-            f"{project_name}_elasticsearch_tracking_status_mapping"
+            f"{project_name}_elasticsearch_tracking_status_mapping",
+            deserialize_json=True,
         )
         specimens_mapping = Variable.get(
-            f"{project_name}_elasticsearch_specimens_mapping"
+            f"{project_name}_elasticsearch_specimens_mapping",
+            deserialize_json=True,
         )
+
+        def build_index_body(mapping_obj: dict) -> str:
+            body = dict(settings_obj)
+            body["mappings"] = {"dynamic": "strict", **mapping_obj}
+            return json.dumps(body)
 
         def skip_if_exists(index_url: str, action_cmd: str, label: str) -> str:
             return (
@@ -169,72 +177,39 @@ def biodiversity_metadata_ingestion():
         create_data_portal_index_command = skip_if_exists(
             f"{base_url}/{date_prefix}_data_portal",
             f"curl -sf -X PUT '{base_url}/{date_prefix}_data_portal' "
-            f"-H 'Content-Type: application/json' -d '{settings}'",
+            f"-H 'Content-Type: application/json' "
+            f"-d '{build_index_body(data_portal_mapping)}'",
             f"{date_prefix}_data_portal",
         )
 
         create_tracking_status_index_command = skip_if_exists(
             f"{base_url}/{date_prefix}_tracking_status",
             f"curl -sf -X PUT '{base_url}/{date_prefix}_tracking_status' "
-            f"-H 'Content-Type: application/json' -d '{settings}'",
+            f"-H 'Content-Type: application/json' "
+            f"-d '{build_index_body(tracking_status_mapping)}'",
             f"{date_prefix}_tracking_status",
         )
 
         create_specimens_index_command = skip_if_exists(
             f"{base_url}/{date_prefix}_specimens",
             f"curl -sf -X PUT '{base_url}/{date_prefix}_specimens' "
-            f"-H 'Content-Type: application/json' -d '{settings}'",
+            f"-H 'Content-Type: application/json' "
+            f"-d '{build_index_body(specimens_mapping)}'",
             f"{date_prefix}_specimens",
         )
-
-        add_data_portal_mapping_command = (
-            f"curl -X PUT '{base_url}/"
-            f"{date_prefix}_data_portal/"
-            f"_mapping' "
-            f"-H 'Content-Type: "
-            f"application/json' "
-            f"-d '{data_portal_mapping}'"
-        )
-        add_tracking_status_mapping_command = (
-            f"curl -X PUT '{base_url}/"
-            f"{date_prefix}_tracking_status/"
-            f"_mapping' "
-            f"-H 'Content-Type: "
-            f"application/json' "
-            f"-d '{tracking_status_mapping}'"
-        )
-        add_specimens_mapping_command = (
-            f"curl -X PUT '{base_url}/"
-            f"{date_prefix}_specimens/_mapping' "
-            f"-H 'Content-Type: application/json' "
-            f"-d '{specimens_mapping}'"
-        )
-
 
         (
             BashOperator(
                 task_id=f"{project_name}-create-data-portal-index",
                 bash_command=create_data_portal_index_command,
-            )
-            >> BashOperator(
-                task_id=f"{project_name}-add-mapping-data-portal-index",
-                bash_command=add_data_portal_mapping_command,
             ),
             BashOperator(
                 task_id=f"{project_name}-create-tracking-status-index",
                 bash_command=create_tracking_status_index_command,
-            )
-            >> BashOperator(
-                task_id=f"{project_name}-add-mapping-tracking-status-index",
-                bash_command=add_tracking_status_mapping_command,
             ),
             BashOperator(
                 task_id=f"{project_name}-create-specimens-index",
                 bash_command=create_specimens_index_command,
-            )
-            >> BashOperator(
-                task_id=f"{project_name}-add-mapping-specimens-index",
-                bash_command=add_specimens_mapping_command,
             ),
         ) >> start_ingestion_job
 
