@@ -173,24 +173,10 @@ def biodiversity_metadata_ingestion():
             f"{date_prefix}_data_portal",
         )
 
-        add_data_portal_mapping_command = skip_if_exists(
-            f"{base_url}/{date_prefix}_data_portal",
-            f"curl -sf -X PUT '{base_url}/{date_prefix}_data_portal/_mapping' "
-            f"-H 'Content-Type: application/json' -d '{data_portal_mapping}'",
-            f"{date_prefix}_data_portal",
-        )
-
         create_tracking_status_index_command = skip_if_exists(
             f"{base_url}/{date_prefix}_tracking_status",
             f"curl -sf -X PUT '{base_url}/{date_prefix}_tracking_status' "
             f"-H 'Content-Type: application/json' -d '{settings}'",
-            f"{date_prefix}_tracking_status",
-        )
-
-        add_tracking_status_mapping_command = skip_if_exists(
-            f"{base_url}/{date_prefix}_tracking_status",
-            f"curl -sf -X PUT '{base_url}/{date_prefix}_tracking_status/_mapping' "
-            f"-H 'Content-Type: application/json' -d '{tracking_status_mapping}'",
             f"{date_prefix}_tracking_status",
         )
 
@@ -201,11 +187,27 @@ def biodiversity_metadata_ingestion():
             f"{date_prefix}_specimens",
         )
 
-        add_specimens_mapping_command = skip_if_exists(
-            f"{base_url}/{date_prefix}_specimens/_mapping",
-            f"curl -sf -X PUT '{base_url}/{date_prefix}_specimens/_mapping' "
-            f"-H 'Content-Type: application/json' -d '{specimens_mapping}'",
-            f"{date_prefix}_specimens",
+        add_data_portal_mapping_command = (
+            f"curl -X PUT '{base_url}/"
+            f"{date_prefix}_data_portal/"
+            f"_mapping' "
+            f"-H 'Content-Type: "
+            f"application/json' "
+            f"-d '{data_portal_mapping}'"
+        )
+        add_tracking_status_mapping_command = (
+            f"curl -X PUT '{base_url}/"
+            f"{date_prefix}_tracking_status/"
+            f"_mapping' "
+            f"-H 'Content-Type: "
+            f"application/json' "
+            f"-d '{tracking_status_mapping}'"
+        )
+        add_specimens_mapping_command = (
+            f"curl -X PUT '{base_url}/"
+            f"{date_prefix}_specimens/_mapping' "
+            f"-H 'Content-Type: application/json' "
+            f"-d '{specimens_mapping}'"
         )
 
 

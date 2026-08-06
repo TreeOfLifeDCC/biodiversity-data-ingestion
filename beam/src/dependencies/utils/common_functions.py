@@ -23,16 +23,34 @@ def check_field_existence(record):
 
 
 def get_common_name(latin_name):
-    common_name_response = requests.get(
-        f"https://www.ebi.ac.uk/ena/taxonomy/rest/scientific-name/{latin_name}"
-    )
-    if common_name_response.content.decode("utf-8") == "No results.":
+    url = f"https://www.ebi.ac.uk/ena/taxonomy/rest/scientific-name/{latin_name}"
+
+    resp = None
+    for attempt in range(3):
+        try:
+            resp = requests.get(url, timeout=30)
+        except requests.exceptions.RequestException:
+            continue  # network error / timeout -> retry
+        if resp.status_code == 200:
+            break
+        # 429 / 5xx are transient -> retry; other 4xx -> give up
+        if resp.status_code not in (429, 500, 502, 503, 504):
+            return "Not specified"
+    if resp is None or resp.status_code != 200:
         return "Not specified"
-    common_name_response = common_name_response.json()
-    if len(common_name_response) != 0 and "commonName" in common_name_response[0]:
-        return common_name_response[0]["commonName"]
-    else:
+
+    body = resp.text.strip()
+    if not body or body == "No results.":
         return "Not specified"
+
+    try:
+        data = resp.json()
+    except requests.exceptions.JSONDecodeError:
+        return "Not specified"
+
+    if len(data) != 0 and "commonName" in data[0]:
+        return data[0]["commonName"]
+    return "Not specified"
 
 
 def parse_data_records(records):
