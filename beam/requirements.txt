@@ -354,7 +354,7 @@ typing-extensions==4.12.2
     #   pydantic
     #   pydantic-core
     #   referencing
-urllib3==2.3.0
+urllib3==2.7.0
     # via
     #   elastic-transport
     #   requests
