@@ -256,7 +256,7 @@ proto-plus==1.25.0
     #   google-cloud-spanner
     #   google-cloud-videointelligence
     #   google-cloud-vision
-protobuf==5.29.3
+protobuf==5.29.6
     # via
     #   apache-beam
     #   google-api-core
