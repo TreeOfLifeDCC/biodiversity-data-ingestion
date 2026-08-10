@@ -126,6 +126,12 @@ def build_bq_warehouse_integration_sql(cfg: BiodivConfig) -> str:
           FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_spatial_annotations`
         ),
 
+        -- Species table for filtering species with spatial annotations only
+        species_with_spatial_data AS (
+          SELECT DISTINCT accession
+          FROM spatial_annotations
+        ),
+
         range_sizes AS (
           SELECT
             * EXCEPT(species)
@@ -226,6 +232,12 @@ def build_bq_warehouse_integration_sql(cfg: BiodivConfig) -> str:
           ON gc.accession = ena.accession
         LEFT JOIN ensembl_stats_struct AS ens
           ON gc.accession = ens.accession
+
+        -- Filtering species with spatial data only
+        WHERE gc.accession IN (
+          SELECT accession
+          FROM species_with_spatial_data
+        )
     """
 
     return query
