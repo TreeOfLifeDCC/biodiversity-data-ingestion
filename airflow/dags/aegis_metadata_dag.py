@@ -171,7 +171,7 @@ def index_to_es(
 
 
 @dag(
-    schedule="0 9 * * *",
+    schedule="0 7 * * *",
     #schedule_interval=None,
     start_date=pendulum.datetime(2025, 1, 1, tz="Europe/London"),
 
