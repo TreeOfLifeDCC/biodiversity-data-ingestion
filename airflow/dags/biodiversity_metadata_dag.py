@@ -123,6 +123,7 @@ def biodiversity_metadata_ingestion():
         task_id="import_annotations_task",
         python_callable=import_annotations.main,
         op_kwargs={"github_token": github_token},
+        pool="ebi_api",
     )
     date_prefix = datetime.today().strftime("%Y-%m-%d")
     for project_name, subprojects in {
