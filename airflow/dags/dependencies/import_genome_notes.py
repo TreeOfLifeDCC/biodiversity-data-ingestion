@@ -15,6 +15,7 @@ GATEWAY_URL = "https://wellcomeopenresearch.org/content?gatewayIds[0]=231&gatewa
 EBI_API_BASE = "https://www.ebi.ac.uk/ena/browser/api/xml/"
 MAX_CONCURRENT_REQUESTS = 1
 REQUEST_TIMEOUT = 30.0
+CLIENT_TIMEOUT = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
 
 # The Wellcome Open Research API rate-limits bursts of requests with HTTP 429,
 # and once tripped it keeps returning 429 for a cooldown window well over a
@@ -381,7 +382,7 @@ async def parse_genome_notes(
 
 
 async def main():
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=CLIENT_TIMEOUT) as session:
         try:
             headers = {
                 "f1000-authbearer": await get_auth_token(session),
@@ -449,7 +450,7 @@ async def get_all_ids_async(base_url: str, content_type: str = "ARTICLE", show: 
     """
     params = {"contentTypes": content_type, "page": 1, "show": show}
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=CLIENT_TIMEOUT) as session:
         print("Fetching first page to detect total...")
         first_page_data = await fetch_page(session, base_url, params)
 
