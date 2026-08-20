@@ -112,17 +112,38 @@
     },
     "images": {
       "properties": {
-        "acquisition_date": {
-          "type": "keyword"
-        },
-        "acquisition_location": {
-          "type": "keyword"
-        },
         "name": {
           "type": "keyword"
         },
+        "ome_zarr_uri": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "thumbnail_uri": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
         "tile": {
           "type": "keyword"
+        },
+        "uuid": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
         }
       }
     },
