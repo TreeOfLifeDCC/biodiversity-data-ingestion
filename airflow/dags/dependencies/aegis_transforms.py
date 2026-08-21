@@ -373,11 +373,23 @@ def fetch_taxonomy(tax_id) -> dict:
         "phylogeny": {rank: "Other" for rank in linnaean_ranks},
     }
     try:
-        response = requests.get(
-            f"https://www.ebi.ac.uk/ena/browser/api/xml/{tax_id}",
-            timeout=30,
-        )
-        response.raise_for_status()
+        response = None
+        for attempt in range(4):
+            try:
+                response = requests.get(
+                    f"https://www.ebi.ac.uk/ena/browser/api/xml/{tax_id}",
+                    timeout=30,
+                )
+                response.raise_for_status()
+                break
+            except (
+                requests.exceptions.ChunkedEncodingError,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+            ):
+                if attempt == 3:
+                    raise
+                sleep(2 ** attempt)
         root = etree.fromstring(response.content)
         taxon_el = root.find("taxon")
         if taxon_el is None:

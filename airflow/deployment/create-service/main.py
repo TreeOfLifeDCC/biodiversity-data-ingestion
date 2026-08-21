@@ -77,10 +77,10 @@ def start_composer_environment(http_request):
     )
 
     worker = WorkloadsConfig.WorkerResource(
-        cpu=_float_env("WORKER_CPU", 1.0),
-        memory_gb=_float_env("WORKER_MEM_GB", 4.0),
+        cpu=_float_env("WORKER_CPU", 2.0),
+        memory_gb=_float_env("WORKER_MEM_GB", 8.0),
         storage_gb=_float_env("WORKER_STORAGE_GB", 10.0),
-        min_count=_int_env("WORKER_MIN_COUNT", 1),
+        min_count=_int_env("WORKER_MIN_COUNT", 2),
         max_count=_int_env("WORKER_MAX_COUNT", 10),
     )
 
@@ -122,7 +122,8 @@ def start_composer_environment(http_request):
         )
         op = client.create_environment(request=create_req)
         return (
-            f"create requested: {env_resource}\noperation: {op.operation.name}\n",
+            f"create requested: {env_resource}\n"
+            f"operation: {op.operation.name}\n",
             200,
         )
 

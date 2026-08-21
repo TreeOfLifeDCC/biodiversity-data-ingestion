@@ -74,18 +74,31 @@ def resolve_tax_id(accession, cache, _get=requests.get, retries=3, sleep_s=0.1):
     tax_id = None
     for attempt in range(retries):
         try:
-            resp = _get(ENA_XML.format(accession=accession), timeout=30)
+            resp = _get(ENA_XML.format(accession=accession), timeout=(5, 15))
             resp.raise_for_status()
             node = ET.fromstring(resp.content).find(".//TAXON_ID")
             if node is not None and node.text:
                 tax_id = node.text.strip()
             break
-        except Exception as exc:  # network, HTTP, or XML parse error
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
             logger.warning(
                 "ENA tax_id lookup failed for %s (attempt %d/%d): %s",
                 accession, attempt + 1, retries, exc,
             )
             time.sleep(sleep_s)
+        except requests.exceptions.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status is not None and 400 <= status < 500:
+                logger.warning("ENA returned %s for %s; not retrying", status, accession)
+                break
+            logger.warning(
+                "ENA tax_id lookup failed for %s (attempt %d/%d): %s",
+                accession, attempt + 1, retries, exc,
+            )
+            time.sleep(sleep_s)
+        except ET.ParseError as exc:
+            logger.warning("ENA returned unparseable XML for %s: %s", accession, exc)
+            break
     if tax_id is None:
         logger.warning("No tax_id resolved for %s; skipping its record", accession)
     cache[accession] = tax_id

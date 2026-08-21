@@ -8,7 +8,12 @@ from urllib3.util.retry import Retry
 
 
 BIA_ACCESSIONS = ("S-BIAD2258",)
+
+BIA_SEARCH_URL = "https://beta.bioimagearchive.org/search/v1/website/browse/image"
 PAGE_SIZE = 100
+# TODO once BIA fixes the issue, we should be able to acess all images. For now, we access only 10,000
+MAX_OFFSET = 10000
+
 BULK_BATCH_SIZE = 500
 REQUEST_TIMEOUT = (10, 120)
 
@@ -31,45 +36,69 @@ def get_session() -> requests.Session:
     return session
 
 
-def fetch_bia_files(session: requests.Session, accession: str) -> dict[str, list[dict]]:
-    url = f"https://www.ebi.ac.uk/biostudies/api/v1/files/{accession}"
-    results = defaultdict(list)
-    start = 0
+def parse_hit(source: dict) -> dict | None:
+    attributes: dict = {}
+    thumbnail_uri = None
+    for meta in source.get("additional_metadata", []):
+        name = meta.get("name", "")
+        if name.startswith("attributes_from_file_reference_"):
+            attributes = meta.get("value", {}).get("attributes", {})
+        elif name == "image_thumbnail_uri":
+            thumbnail_uri = meta.get("value", {}).get("256", {}).get("uri")
 
-    while True:
+    ome_zarr_uri = None
+    for representation in source.get("representation", []):
+        if representation.get("image_format") == ".ome.zarr" and representation.get("file_uri"):
+            ome_zarr_uri = representation["file_uri"][0]
+            break
+
+    if not ome_zarr_uri:
+        return None
+
+    biosample_url = attributes.get("BioSamples_ID")
+    if not biosample_url:
+        return None
+
+    biosample_id = biosample_url.rstrip("/").split("/")[-1]
+    return {
+        "biosample_id": biosample_id,
+        "image": {
+            "uuid": source.get("uuid", ""),
+            "name": attributes.get("name", ""),
+            "tile": attributes.get("tile", ""),
+            "ome_zarr_uri": ome_zarr_uri,
+            "thumbnail_uri": thumbnail_uri,
+        },
+    }
+
+
+def fetch_bia_images(session: requests.Session, accession: str) -> dict[str, list[dict]]:
+    results = defaultdict(list)
+    page = 1
+
+    while (page - 1) * PAGE_SIZE < MAX_OFFSET:
         response = session.get(
-            url,
-            params={"start": start, "length": PAGE_SIZE},
+            BIA_SEARCH_URL,
+            params={
+                "facet.accession_id": accession,
+                "query": "",
+                "pagination.page_size": PAGE_SIZE,
+                "pagination.page": page,
+            },
             timeout=REQUEST_TIMEOUT,
         )
         response.raise_for_status()
-        data = response.json()
-        entries = data.get("data", [])
+        hits = response.json().get("hits", {}).get("hits", [])
 
-        if not entries:
+        if not hits:
             break
 
-        for entry in entries:
-            if entry.get("type") != "file" or not entry.get("name"):
-                continue
+        for hit in hits:
+            parsed = parse_hit(hit.get("_source", {}))
+            if parsed:
+                results[parsed["biosample_id"]].append(parsed["image"])
 
-            biosample_url = entry.get("BioSamples_ID")
-            if not biosample_url:
-                continue
-
-            biosample_id = biosample_url.rstrip("/").split("/")[-1]
-            results[biosample_id].append(
-                {
-                    "acquisition_location": entry.get("acquisition_location", ""),
-                    "acquisition_date": entry.get("acquisition_date", ""),
-                    "name": entry.get("name", ""),
-                    "tile": entry.get("tile", ""),
-                }
-            )
-
-        start += PAGE_SIZE
-        if start >= data.get("recordsTotal", 0):
-            break
+        page += 1
 
     return dict(results)
 
@@ -160,7 +189,7 @@ def main(es_host: str, es_password: str, index_name: str) -> dict:
     all_images = {}
     for accession in BIA_ACCESSIONS:
         logging.info("Fetching TREC images from BioImage Archive accession %s", accession)
-        images = fetch_bia_files(session, accession)
+        images = fetch_bia_images(session, accession)
         for biosample_id, entries in images.items():
             all_images.setdefault(biosample_id, []).extend(entries)
 

@@ -6,13 +6,43 @@ from time import sleep
 import requests
 
 from .samples_schema import samples_schema
+from requests.adapters import HTTPAdapter
+from requests.exceptions import ChunkedEncodingError, ConnectionError, Timeout
+from urllib3.util.retry import Retry
+REQUEST_TIMEOUT = (10, 120)
 
+
+def _get_json(session: requests.Session, url: str, retries: int = 4):
+    for attempt in range(retries):
+        try:
+            return session.get(url, timeout=REQUEST_TIMEOUT).json()
+        except (ChunkedEncodingError, ConnectionError, Timeout, ValueError):
+            if attempt == retries - 1:
+                raise
+            sleep(2 ** attempt)
+
+def _make_session() -> requests.Session:
+    retry = Retry(
+        total=6,
+        connect=6,
+        read=3,
+        backoff_factor=2,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    session = requests.Session()
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=4, pool_maxsize=4)
+    session.mount("https://", adapter)
+    return session
 
 def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
     """
     Collect DToL metadata from BioSamples, experiments, assemblies and analyses
     from the ENA
     """
+    session = _make_session()
     experiments_aggr: defaultdict[str, list] = defaultdict(list)
     assemblies_aggr: defaultdict[str, list] = defaultdict(list)
     analyses_aggr: defaultdict[str, list] = defaultdict(list)
@@ -38,29 +68,29 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
                 analysis_fields.append(analysis_field["name"])
 
     # Collect all experiments
-    raw_data = requests.get(
+    raw_data = _get_json(
+        session,
         f"{ena_root_url}?accession={study_id}&result=read_run"
         f"&fields={','.join(experiment_fields)}&format=json&limit=0",
-        timeout=3600,
-    ).json()
+    )
 
     sleep(0.1)
 
     # Collect all assemblies
-    assemblies = requests.get(
+    assemblies = _get_json(
+        session,
         f"{ena_root_url}?accession={study_id}&result=assembly"
         f"&fields={','.join(assemblies_fields)}&format=json&limit=0",
-        timeout=3600,
-    ).json()
+    )
 
     sleep(0.1)
 
     # Collect all analyses
-    analyses = requests.get(
+    analyses = _get_json(
+        session,
         f"{ena_root_url}?accession={study_id}&result=analysis"
         f"&fields={','.join(analysis_fields)}&format=json&limit=0",
-        timeout=3600,
-    ).json()
+    )
 
     sleep(0.1)
 
@@ -79,21 +109,21 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
             f"{biosamples_root_url}?size=200&filter="
             f"attr%3Aproject%20name%3A{project_tag}"
         )
-        samples_response = requests.get(first_url, timeout=3600).json()
+        samples_response = _get_json(session, first_url)
         sleep(0.1)
         while "_embedded" in samples_response:
             for sample in samples_response["_embedded"]["samples"]:
                 sample["project_name"] = project_tag
                 samples[sample["accession"]] = sample
             if "next" in samples_response["_links"]:
-                samples_response = requests.get(
-                    samples_response["_links"]["next"]["href"], timeout=3600
-                ).json()
+                samples_response = _get_json(
+                    session, samples_response["_links"]["next"]["href"]
+                )
                 sleep(0.1)
             else:
-                samples_response = requests.get(
-                    samples_response["_links"]["last"]["href"], timeout=3600
-                ).json()
+                samples_response = _get_json(
+                    session, samples_response["_links"]["last"]["href"]
+                )
                 sleep(0.1)
 
     # join metadata and data records
@@ -103,7 +133,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
         "analyses": analyses_aggr,
     }.items():
         join_metadata_and_data(
-            record_type, agg_name, project_tag, samples, biosamples_root_url
+            record_type, agg_name, project_tag, samples, biosamples_root_url, session
         )
 
     # check for missing child -> parent relationship records
@@ -116,9 +146,9 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
                 and host_sample_id not in additional_samples
             ):
                 try:
-                    additional_samples[host_sample_id] = requests.get(
-                        f"{biosamples_root_url}/{host_sample_id}", timeout=3600
-                    ).json()
+                    additional_samples[host_sample_id] = _get_json(
+                        session, f"{biosamples_root_url}/{host_sample_id}"
+                    )
                     sleep(0.1)
                 except json.decoder.JSONDecodeError:
                     print(f"json decode error for {host_sample_id}")
@@ -130,9 +160,9 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
                 and host_sample_id not in additional_samples
             ):
                 try:
-                    additional_samples[host_sample_id] = requests.get(
-                        f"{biosamples_root_url}/{host_sample_id}", timeout=3600
-                    ).json()
+                    additional_samples[host_sample_id] = _get_json(
+                        session, f"{biosamples_root_url}/{host_sample_id}"
+                    )
                     sleep(0.1)
                 except json.decoder.JSONDecodeError:
                     print(f"json decode error for {host_sample_id}")
@@ -162,6 +192,7 @@ def join_metadata_and_data(
     project_tag: str,
     samples: dict[str, dict],
     biosamples_root_url: str,
+    session: requests.Session,
 ) -> None:
     """
     Join records from BioSamples and ENA into python dict(key: biosample_id, \
@@ -182,9 +213,9 @@ def join_metadata_and_data(
         for sample_id, data in records_data.items():
             if sample_id not in samples:
                 try:
-                    response = requests.get(
-                        f"{biosamples_root_url}/{sample_id}", timeout=3600
-                    ).json()
+                    response = _get_json(
+                        session, f"{biosamples_root_url}/{sample_id}"
+                    )
                     sleep(0.1)
                     if response["status"] == 403:
                         continue
