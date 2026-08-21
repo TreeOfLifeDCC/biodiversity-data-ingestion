@@ -119,7 +119,7 @@ def cleanup_composer_bucket(http_request):
             jsonify(
                 {
                     "status": "configuration_error",
-                    "message": str(error),
+                    "message": "There was a configuration error.",
                 }
             ),
             500,
@@ -207,7 +207,7 @@ def cleanup_composer_bucket(http_request):
             jsonify(
                 {
                     "status": "verification_failed",
-                    "message": str(error),
+                    "message": "There was a verification error.",
                     "environment": environment_resource,
                 }
             ),
@@ -288,7 +288,7 @@ def cleanup_composer_bucket(http_request):
             jsonify(
                 {
                     "status": "permission_denied",
-                    "message": str(error),
+                    "message": "There was a permission error.",
                     "bucket": bucket_name,
                 }
             ),
@@ -302,7 +302,7 @@ def cleanup_composer_bucket(http_request):
             jsonify(
                 {
                     "status": "cleanup_failed",
-                    "message": str(error),
+                    "message": "There was a cleanup error.",
                     "bucket": bucket_name,
                     "prefix": bucket_prefix,
                     "deleted_count": deleted_count,
