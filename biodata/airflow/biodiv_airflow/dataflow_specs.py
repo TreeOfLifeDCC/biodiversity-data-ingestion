@@ -6,6 +6,7 @@ def _base_environment(cfg: BiodivConfig, pipeline_label: str) -> dict[str, Any]:
     return {
         "tempLocation": cfg.df_temp_location,
         "stagingLocation": cfg.df_staging_location,
+        "maxWorkers": 24,
         "additionalUserLabels": {
             "app": "biodiversity",
             "dag": "biodiv_pipelines_dag",

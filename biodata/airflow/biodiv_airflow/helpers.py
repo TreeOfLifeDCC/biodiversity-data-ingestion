@@ -9,7 +9,10 @@ from google.oauth2 import id_token
 from google.cloud import storage
 
 from biodiv_airflow.config import BiodivConfig
-from biodiv_airflow.sql_queries import build_bq_genome_annotations_summary_sql
+from biodiv_airflow.sql_queries import (
+    build_bq_gene_names_sql,
+    build_bq_genome_annotations_summary_sql,
+)
 
 
 # Constants
@@ -297,18 +300,19 @@ def choose_branch(
         return skip_task_id
 
 
-def build_bq_genome_annotations_summary_sql_from_manifest(
+def _read_success_accessions_from_manifest(
     cfg: BiodivConfig,
     manifest_uri: str,
-) -> str:
+) -> list[str]:
     """
-    Build the genome biotype summary SQL from a BQ ingestion manifest.
+    Read successful genome annotation accessions from a BQ ingestion manifest.
 
     The manifest is expected to be a GCS JSONL file containing records with:
     - accession
     - status
 
     Only records with status == "SUCCESS" are included.
+    Invalid accession values are skipped and written to bq_invalid_accessions.jsonl.
     """
     bucket_and_blob = manifest_uri.removeprefix("gs://")
     bucket_name, blob_name = bucket_and_blob.split("/", 1)
@@ -366,7 +370,34 @@ def build_bq_genome_annotations_summary_sql_from_manifest(
     print(f"Found {len(sorted_accessions)} new accessions in {manifest_uri}")
     print(f"New accessions sample: {sorted_accessions[:20]}")
 
+    return sorted_accessions
+
+
+def build_bq_genome_annotations_summary_sql_from_manifest(
+    cfg: BiodivConfig,
+    manifest_uri: str,
+) -> str:
+    run_accessions = _read_success_accessions_from_manifest(
+        cfg=cfg,
+        manifest_uri=manifest_uri,
+    )
+
     return build_bq_genome_annotations_summary_sql(
         cfg=cfg,
-        run_accessions=sorted_accessions,
+        run_accessions=run_accessions,
+    )
+
+
+def build_bq_gene_names_sql_from_manifest(
+    cfg: BiodivConfig,
+    manifest_uri: str,
+) -> str:
+    run_accessions = _read_success_accessions_from_manifest(
+        cfg=cfg,
+        manifest_uri=manifest_uri,
+    )
+
+    return build_bq_gene_names_sql(
+        cfg=cfg,
+        run_accessions=run_accessions,
     )

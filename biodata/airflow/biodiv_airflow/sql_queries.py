@@ -398,3 +398,48 @@ def build_bq_genome_annotations_summary_sql(
           ON a.accession = tbs.accession
     """
     return query
+
+
+def build_bq_gene_names_sql(
+    cfg: BiodivConfig,
+    run_accessions: list[str],
+) -> str:
+    """
+    Return SQL to append bp_gene_names rows for run accessions.
+
+    Builds a compact table of named gene annotations from GTF gene records.
+    Assumes bp_gene_names already exists and is clustered by gene_name and accession.
+    DELETE is used first for retry-safe execution of the current run's accessions.
+    """
+    accessions_to_run = ", ".join(f"'{accession}'" for accession in run_accessions)
+
+    query = f"""
+        DELETE FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_gene_names`
+        WHERE accession IN ({accessions_to_run});
+
+        INSERT INTO `{cfg.gcp_project}.{cfg.bq_dataset}.bp_gene_names` (
+          accession,
+          gene_name,
+          gene_name_original,
+          gene_biotype,
+          gene_count
+        )
+        SELECT
+          accession,
+          UPPER(TRIM(gene_name)) AS gene_name,
+          TRIM(gene_name) AS gene_name_original,
+          gene_biotype,
+          COUNT(DISTINCT gene_id) AS gene_count
+        FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_genome_annotations`
+        WHERE accession IN ({accessions_to_run})
+          AND record_type = 'gene'
+          AND NULLIF(TRIM(gene_name), '') IS NOT NULL
+          AND NULLIF(TRIM(gene_id), '') IS NOT NULL
+        GROUP BY
+          accession,
+          gene_name,
+          gene_name_original,
+          gene_biotype
+    """
+
+    return query

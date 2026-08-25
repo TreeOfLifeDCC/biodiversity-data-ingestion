@@ -10,17 +10,16 @@ from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobO
 from airflow.providers.google.cloud.operators.dataflow import DataflowStartFlexTemplateOperator
 from airflow.providers.standard.operators.python import PythonOperator, BranchPythonOperator
 
+from biodiv_airflow import dataflow_specs
 from biodiv_airflow.config import load_config
 from biodiv_airflow.helpers import (
     write_gcs_marker,
     validate_config,
     choose_branch,
     build_bq_genome_annotations_summary_sql_from_manifest,
-    call_delete_service
+    build_bq_gene_names_sql_from_manifest,
+    call_delete_service,
 )
-
-from biodiv_airflow import dataflow_specs
-
 from biodiv_airflow.sql_queries import (
     build_bq_warehouse_integration_sql,
 )
@@ -223,6 +222,33 @@ with DAG(
         },
     )
 
+    build_gene_names_sql = PythonOperator(
+        task_id="build_gene_names_sql",
+        python_callable=build_bq_gene_names_sql_from_manifest,
+        op_kwargs={
+            "cfg": cfg,
+            "manifest_uri": f"{cfg.gtf_manifest}/bq_ingestion.jsonl",
+        },
+    )
+
+    run_gene_names_bq = BigQueryInsertJobOperator(
+        task_id="run_gene_names_bq",
+        project_id=cfg.gcp_project,
+        location=cfg.gcp_region,
+        configuration={
+            "query": {
+                "query": "{{ ti.xcom_pull(task_ids='build_gene_names_sql') }}",
+                "useLegacySql": False,
+            }
+        },
+    )
+
+    mark_gene_names_bq_success = PythonOperator(
+        task_id="mark_gene_names_bq_success",
+        python_callable=write_gcs_marker,
+        op_kwargs={"gcs_marker_uri": f"{cfg.gtf_manifest}/_SUCCESS_GENE_NAMES_BQ"},
+    )
+
     run_biodiv_warehouse_integration_bq = BigQueryInsertJobOperator(
         task_id="run_biodiv_warehouse_integration_bq",
         project_id=cfg.gcp_project,
@@ -309,6 +335,14 @@ with DAG(
             >> mark_load_genome_annotation_to_bq_success
     )
 
+    # Gene names table in BQ
+    (
+            mark_load_genome_annotation_to_bq_success
+            >> build_gene_names_sql
+            >> run_gene_names_bq
+            >> mark_gene_names_bq_success
+    )
+
     # Data integration in BQ
     (
             [
@@ -328,4 +362,5 @@ with DAG(
         mark_data_provenance_success,
         mark_load_genome_annotation_to_bq_success,
         mark_run_bq_integration_success,
+        mark_gene_names_bq_success
     ] >> mark_pipelines_completion_success >> delete_env
