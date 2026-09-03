@@ -1,10 +1,11 @@
 import os
-
 import functions_framework
 import google.auth
+
 from google.api_core.exceptions import NotFound
 from google.auth.transport.requests import AuthorizedSession
 from google.cloud.orchestration.airflow import service_v1
+from datetime import datetime, timezone
 
 
 def _require_env(name: str) -> str:
@@ -58,12 +59,18 @@ def trigger_composer_dag(request):
     if not web_server_url:
         return (f"environment has no Airflow webserver URI: {env_resource}\n", 503)
 
+    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dag_run_id = f"cloud-scheduler__{dag_id}__{run_timestamp}"
+
     credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     authed_session = AuthorizedSession(credentials)
 
     response = authed_session.post(
         f"{web_server_url}/api/v1/dags/{dag_id}/dagRuns",
-        json={"conf": conf},
+        json={
+            "dag_run_id": dag_run_id,
+            "conf": conf,
+        },
         timeout=90,
     )
 
