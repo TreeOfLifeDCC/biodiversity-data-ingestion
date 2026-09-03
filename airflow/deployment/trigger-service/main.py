@@ -79,6 +79,7 @@ def trigger_composer_dag(request):
             f"dag trigger requested\n"
             f"environment: {env_resource}\n"
             f"dag_id: {dag_id}\n"
+            f"dag_run_id: {dag_run_id}\n",
             f"response: {response.text}\n",
             200,
         )
@@ -86,7 +87,7 @@ def trigger_composer_dag(request):
     return (
         f"dag trigger failed\n"
         f"status: {response.status_code}\n"
-        f"body: {response.text}\n",
         f"dag_run_id: {dag_run_id}\n",
+        f"body: {response.text}\n",
         response.status_code,
     )
