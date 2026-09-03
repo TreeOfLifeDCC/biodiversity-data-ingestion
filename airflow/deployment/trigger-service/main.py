@@ -14,6 +14,14 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _allowed_dag_ids() -> set[str]:
+    raw_value = _require_env("ALLOWED_DAG_IDS")
+    dag_ids = {item.strip() for item in raw_value.split(",") if item.strip()}
+    if not dag_ids:
+        raise ValueError("ALLOWED_DAG_IDS must contain at least one DAG ID")
+    return dag_ids
+
+
 @functions_framework.http
 def trigger_composer_dag(request):
     if request.method != "POST":
@@ -22,14 +30,17 @@ def trigger_composer_dag(request):
     project_id = _require_env("PROJECT_ID")
     region = _require_env("REGION")
     env_name = _require_env("COMPOSER_ENV_NAME")
-    default_dag_id = _require_env("DAG_ID")
+    allowed_dag_ids = _allowed_dag_ids()
 
     payload = request.get_json(silent=True) or {}
 
-    dag_id = str(payload.get("dag_id") or default_dag_id).strip()
+    dag_id = str(payload.get("dag_id") or "").strip()
     conf = payload.get("conf", {})
 
-    if dag_id != default_dag_id:
+    if not dag_id:
+        return ("Missing dag_id\n", 400)
+
+    if dag_id not in allowed_dag_ids:
         return ("dag_id not allowed\n", 403)
 
     env_resource = f"projects/{project_id}/locations/{region}/environments/{env_name}"
