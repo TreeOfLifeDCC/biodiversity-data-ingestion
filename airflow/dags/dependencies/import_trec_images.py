@@ -8,12 +8,9 @@ from urllib3.util.retry import Retry
 
 
 BIA_ACCESSIONS = ("S-BIAD2258",)
-
-BIA_SEARCH_URL = "https://beta.bioimagearchive.org/search/v1/website/browse/image"
+BIA_SEARCH_URL = "https://beta.bioimagearchive.org/search/v1/search/fts/image"
 PAGE_SIZE = 100
-# TODO once BIA fixes the issue, we should be able to acess all images. For now, we access only 10,000
-MAX_OFFSET = 10000
-
+OFFSET_LIMIT_PAGES = 10000 // PAGE_SIZE    # 100 pages = the first 10k via offset
 BULK_BATCH_SIZE = 500
 REQUEST_TIMEOUT = (10, 120)
 
@@ -74,34 +71,54 @@ def parse_hit(source: dict) -> dict | None:
 
 def fetch_bia_images(session: requests.Session, accession: str) -> dict[str, list[dict]]:
     results = defaultdict(list)
-    page = 1
+    base_params = {
+        "facet.accession_id": accession,
+        "query": "",
+        "pagination.page_size": PAGE_SIZE,
+        "has.converted_image": "True",
+    }
 
-    while (page - 1) * PAGE_SIZE < MAX_OFFSET:
-        response = session.get(
-            BIA_SEARCH_URL,
-            params={
-                "facet.accession_id": accession,
-                "query": "",
-                "pagination.page_size": PAGE_SIZE,
-                "pagination.page": page,
-            },
-            timeout=REQUEST_TIMEOUT,
-        )
-        response.raise_for_status()
-        hits = response.json().get("hits", {}).get("hits", [])
-
-        if not hits:
-            break
-
+    def ingest(hits: list[dict]) -> None:
         for hit in hits:
             parsed = parse_hit(hit.get("_source", {}))
             if parsed:
                 results[parsed["biosample_id"]].append(parsed["image"])
 
-        page += 1
+    # offset pagination for the first 10,000 results.
+    next_cursor = None
+    for page in range(1, OFFSET_LIMIT_PAGES + 1):
+        response = session.get(
+            BIA_SEARCH_URL,
+            params={**base_params, "pagination.page": page},
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        hits = payload.get("hits", {}).get("hits", [])
+        if not hits:
+            break
+        ingest(hits)
+        next_cursor = payload.get("pagination", {}).get("next_cursor")
+
+    # cursor pagination for records after 10,000.
+    while next_cursor:
+        response = session.get(
+            BIA_SEARCH_URL,
+            params={**base_params, "cursor": next_cursor},
+            timeout=REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        hits = payload.get("hits", {}).get("hits", [])
+        if not hits:
+            break
+        ingest(hits)
+        cursor = payload.get("pagination", {}).get("next_cursor")
+        if cursor == next_cursor:
+            break
+        next_cursor = cursor
 
     return dict(results)
-
 
 def get_all_samples(es: Elasticsearch, index_name: str) -> list[dict]:
     samples = []
