@@ -59,7 +59,7 @@ def trigger_composer_dag(request):
     if not web_server_url:
         return (f"environment has no Airflow webserver URI: {env_resource}\n", 503)
 
-    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     dag_run_id = f"cloud-scheduler__{dag_id}__{run_timestamp}"
 
     credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
@@ -79,7 +79,7 @@ def trigger_composer_dag(request):
             f"dag trigger requested\n"
             f"environment: {env_resource}\n"
             f"dag_id: {dag_id}\n"
-            f"dag_run_id: {dag_run_id}\n",
+            f"dag_run_id: {dag_run_id}\n"
             f"response: {response.text}\n",
             200,
         )
@@ -87,7 +87,7 @@ def trigger_composer_dag(request):
     return (
         f"dag trigger failed\n"
         f"status: {response.status_code}\n"
-        f"dag_run_id: {dag_run_id}\n",
+        f"dag_run_id: {dag_run_id}\n"
         f"body: {response.text}\n",
         response.status_code,
     )
