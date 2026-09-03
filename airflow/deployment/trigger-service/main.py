@@ -87,5 +87,6 @@ def trigger_composer_dag(request):
         f"dag trigger failed\n"
         f"status: {response.status_code}\n"
         f"body: {response.text}\n",
+        f"dag_run_id: {dag_run_id}\n",
         response.status_code,
     )
