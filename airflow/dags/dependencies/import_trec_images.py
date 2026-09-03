@@ -120,6 +120,7 @@ def fetch_bia_images(session: requests.Session, accession: str) -> dict[str, lis
 
     return dict(results)
 
+
 def get_all_samples(es: Elasticsearch, index_name: str) -> list[dict]:
     samples = []
     search_after = None
@@ -134,7 +135,10 @@ def get_all_samples(es: Elasticsearch, index_name: str) -> list[dict]:
         if search_after:
             body["search_after"] = search_after
 
-        response = es.search(index=index_name, body=body, request_timeout=120)
+        response = es.options(request_timeout=120).search(
+            index=index_name,
+            body=body,
+        )
         hits = response["hits"]["hits"]
 
         if not hits:
@@ -166,29 +170,25 @@ def bulk_update_images(es: Elasticsearch, index_name: str, updates: list[dict]) 
     ]
 
     helpers.bulk(
-        es,
+        es.options(request_timeout=120),
         actions,
         chunk_size=BULK_BATCH_SIZE,
-        request_timeout=120,
     )
 
 
 def refresh_has_images_flags(es: Elasticsearch, index_name: str) -> dict:
-    response = es.update_by_query(
+    response = es.options(request_timeout=120).update_by_query(
         index=index_name,
-        body={
-            "script": {
-                "source": (
-                    "ctx._source.has_images = "
-                    "(ctx._source.images != null && ctx._source.images.length > 0) "
-                    "? 'Yes' : 'No'"
-                ),
-                "lang": "painless",
-            }
+        script={
+            "source": (
+                "ctx._source.has_images = "
+                "(ctx._source.images != null && ctx._source.images.length > 0) "
+                "? 'Yes' : 'No'"
+            ),
+            "lang": "painless",
         },
         conflicts="proceed",
         refresh=True,
-        request_timeout=120,
     )
     return dict(response)
 
