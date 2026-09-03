@@ -36,6 +36,8 @@ def trigger_composer_dag(request):
 
     dag_id = str(payload.get("dag_id") or "").strip()
     conf = payload.get("conf", {})
+    if not isinstance(conf, dict):
+        return ("conf must be a JSON object\n", 400)
 
     if not dag_id:
         return ("Missing dag_id\n", 400)
