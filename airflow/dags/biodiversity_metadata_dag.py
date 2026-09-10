@@ -92,7 +92,8 @@ def get_genome_notes(**kwargs) -> None:
 
 
 @dag(
-    schedule="0 8 * * *",
+    # schedule="0 8 * * *",
+    schedule=None,  # Triggered by Cloud Scheduler
     start_date=pendulum.datetime(2025, 7, 1, tz="Europe/London"),
     catchup=False,
     max_active_tasks=8,
