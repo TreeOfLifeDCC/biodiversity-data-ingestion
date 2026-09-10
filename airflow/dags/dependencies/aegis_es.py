@@ -55,6 +55,7 @@ SAMPLES_MAPPING = {
         "trackingSystem":        {"type": "keyword"},
         "projectTag":            {"type": "keyword"},
         "projectName":           {"type": "keyword"},
+        "dataType":              {"type": "keyword"},
         # Mandatory ERC000053 fields
         "organismPart":          {"type": "keyword"},
         "lifestage":             {"type": "keyword"},
@@ -112,6 +113,20 @@ SAMPLES_MAPPING = {
         "insdcLastUpdate":       {"type": "date"},
         "insdcStatus":           {"type": "keyword"},
         "externalReferences":    {"type": "keyword"},
+        # Ancient / environmental (ERC000059) first-class fields
+        "submitterId":                       {"type": "keyword"},
+        "description":                       _TEXT_KW_SHORT,
+        "environmentalMedium":               {"type": "keyword"},
+        "broadScaleEnvironmentalContext":    {"type": "keyword"},
+        "localEnvironmentalContext":         {"type": "keyword"},
+        "pastBroadScaleEnvironmentalContext":{"type": "keyword"},
+        "pastLocalEnvironmentalContext":     {"type": "keyword"},
+        "geologicalEpoch":                   {"type": "keyword"},
+        "sampleAgeInferenceMethod":          {"type": "keyword"},
+        "sampleAgeRangeOldestLimit":         {"type": "float"},
+        "sampleAgeRangeYoungestLimit":       {"type": "float"},
+        "damageTreatment":                   {"type": "keyword"},
+        "masterCoreSampleId":                {"type": "keyword"},
         # Custom fields (non-checklist characteristics)
         "customFields": {
             "type": "nested",
@@ -180,6 +195,20 @@ DATA_PORTAL_MAPPING = {
         "sampleCount":        {"type": "integer"},
         "locations":          {"type": "geo_point"},
         "countries":          {"type": "keyword"},
+        # Data-track discriminator + environmental-DNA extras
+        "dataType":           {"type": "keyword"},
+        "readTotal":          {"type": "long"},
+        "ageOldest":          {"type": "integer"},
+        "ageYoungest":        {"type": "integer"},
+        # Per-layer abundance down the sediment core
+        "abundance": {
+            "type": "nested",
+            "properties": {
+                "age":   {"type": "integer"},
+                "reads": {"type": "long"},
+                "prop":  {"type": "float"},
+            },
+        },
         # Flat Ensembl-annotation records, produced by import_annotations.py
         # from _data/aegis/species.yaml (same shape as the dtol/erga/asg/gbdp
         # manifests). One nested entry per assembly accession.

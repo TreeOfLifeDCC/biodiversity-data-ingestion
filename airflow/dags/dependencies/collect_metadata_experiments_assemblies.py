@@ -104,7 +104,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
         parse_data_records(aggr_var, records_data)
 
     # collect metadata from the BioSamples
-    if project_tag in ["AEGIS", "ASG", "DTOL", "ERGA"]:
+    if project_tag.upper() in ["AEGIS", "ASG", "DTOL", "ERGA"]:
         first_url = (
             f"{biosamples_root_url}?size=200&filter="
             f"attr%3Aproject%20name%3A{project_tag}"
