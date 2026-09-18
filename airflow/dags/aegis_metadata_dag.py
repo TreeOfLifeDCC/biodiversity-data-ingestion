@@ -159,8 +159,11 @@ def build_ancient_samples_docs(metadata: dict) -> list[dict]:
 
 
 @task
-def build_edna_species_docs() -> list[dict]:
-    return build_edna_docs(TAXONOMY_FILE, resolve=True)
+def build_edna_species_docs(ancient_samples_docs: list[dict]) -> list[dict]:
+    countries = sorted({
+        d["country"] for d in ancient_samples_docs if d.get("country")
+    }) or None
+    return build_edna_docs(TAXONOMY_FILE, resolve=True, countries=countries)
 
 
 @task
@@ -184,6 +187,7 @@ def index_to_es(
         get_es_client,
         create_index_with_mapping,
         bulk_index_documents,
+        _check_duplicate_ids,
         SAMPLES_MAPPING,
         DATA_PORTAL_MAPPING,
     )
@@ -204,6 +208,7 @@ def index_to_es(
 
     # Bulk index documents
     bulk_index_documents(es, samples_index, samples_docs, id_field="accession")
+    _check_duplicate_ids(data_portal_docs, id_field="taxId")
     bulk_index_documents(es, data_portal_index, data_portal_docs, id_field="taxId")
 
     # Rotate aliases onto today's indices and prune to the 2 newest
@@ -247,7 +252,7 @@ def aegis_metadata_ingestion():
     samples = build_samples_docs(metadata)
     data_portal = build_data_portal_docs(metadata, annotations)
     ancient_samples = build_ancient_samples_docs(ancient_metadata)
-    edna = build_edna_species_docs()
+    edna = build_edna_species_docs(ancient_samples)
     index_to_es(samples, data_portal, ancient_samples, edna)
 
 

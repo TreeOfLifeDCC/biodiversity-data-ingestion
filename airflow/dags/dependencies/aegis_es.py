@@ -162,6 +162,8 @@ DATA_PORTAL_MAPPING = {
         "rawDataStatus":      {"type": "keyword"},
         "assembliesStatus":   {"type": "keyword"},
         "annotationStatus":   {"type": "keyword"},
+        "resolvedStatus":     {"type": "keyword"},
+        "unassignedStatus":   {"type": "keyword"},
         "rawData": {
             "properties": {
                 "study_accession":      _TEXT_KW,
@@ -263,6 +265,30 @@ def create_index_with_mapping(
         mappings=mapping,
     )
     logger.info("Created index %s", index_name)
+
+
+def _check_duplicate_ids(docs: list[dict], id_field: str = "taxId") -> dict:
+    seen: dict[str, str] = {}
+    dupes: dict[str, list[str]] = {}
+    for d in docs:
+        did = d.get(id_field)
+        if did is None:
+            continue
+        key = str(did)
+        name = d.get("scientificName", "?")
+        if key in seen:
+            dupes.setdefault(key, [seen[key]]).append(name)
+        else:
+            seen[key] = name
+    for did, names in dupes.items():
+        logger.warning(
+            "DUPLICATE %s=%s shared by %d docs %s -- only the LAST survives in ES; "
+            "resolve the clash (ENA synonyms?) before trusting the index.",
+            id_field, did, len(names), names,
+        )
+    if dupes:
+        logger.warning("%d taxId collision(s) detected in data_portal docs.", len(dupes))
+    return dupes
 
 
 def bulk_index_documents(

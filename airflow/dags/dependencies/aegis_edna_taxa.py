@@ -46,7 +46,9 @@ def build_edna_docs(
     *,
     resolve: bool = True,
     project_name: str = "AEGIS",
+    countries: list[str] | None = None,
 ) -> list[dict]:
+    countries = countries or ["Iceland"]
     rows = _read_tsv(tsv_path)
 
     # Per-layer age and total reads (denominator for relative abundance).
@@ -127,13 +129,16 @@ def build_edna_docs(
             "currentStatusOrder": 2,
             "bioSamplesStatus": "Done",
             "rawDataStatus": "Done",
-            "assembliesStatus": "Waiting",
-            "annotationStatus": "Waiting",
+            "assembliesStatus": "Not applicable",
+            "annotationStatus": "Not applicable",
+            # Per-taxon assignment quality: real ENA taxId vs synthetic/Unassigned.
+            "resolvedStatus": "Done" if tax_id < _SYNTH_BASE else "No",
+            "unassignedStatus": "Done" if tax_id >= _SYNTH_BASE else "No",
             "sampleCount": len(present_ages),
             "readTotal": read_total,
             "ageOldest": min(present_ages) if present_ages else None,
             "ageYoungest": max(present_ages) if present_ages else None,
-            "countries": ["Iceland"],
+            "countries": countries,
             # Empty so these records satisfy the data_portal API model, which
             # requires rawData/assemblies; environmental-DNA taxa have neither
             # per-genus (the reads live on the samples, the abundance below).
