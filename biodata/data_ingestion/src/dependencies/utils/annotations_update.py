@@ -1,24 +1,45 @@
 import json
 import re
+import time
+import requests
 
 from collections import Counter, defaultdict
+from datetime import datetime
 from elasticsearch import Elasticsearch
+from email.utils import parsedate_to_datetime
+from google.cloud import bigquery
 from typing import Any
 
 
+# Constants
 ACCESSION_RE = re.compile(r"^(GCA_\d+)(?:\.(\d+))?$")
-
+# Assembly classification constants
 EXPLICIT_MAIN_ASSEMBLY = "EXPLICIT_MAIN_ASSEMBLY"
 HAPLOTYPE_OR_ALTERNATE_ASSEMBLY = "HAPLOTYPE_OR_ALTERNATE_ASSEMBLY"
 UNMARKED_ASSEMBLY_CANDIDATE = "UNMARKED_ASSEMBLY_CANDIDATE"
 NO_MATCHING_ASSEMBLY_METADATA = "NO_MATCHING_ASSEMBLY_METADATA"
-
+# GTF constants
 SELECTED = "SELECTED"
 REJECTED_NO_VALID_ANNOTATION_CANDIDATES = (
     "REJECTED_NO_VALID_ANNOTATION_CANDIDATES"
 )
 REJECTED_MISSING_GTF_URL = "REJECTED_MISSING_GTF_URL"
 REJECTED_NO_SELECTABLE_ANNOTATION = "REJECTED_NO_SELECTABLE_ANNOTATION"
+# Other constants
+NEW_FTP_PATTERN = "NEW_FTP_PATTERN"
+OLD_FTP_PATTERN = "OLD_FTP_PATTERN"
+PRE_RELEASE_PATTERN = "PRE_RELEASE_PATTERN"
+UNKNOWN_GTF_PATTERN = "UNKNOWN_GTF_PATTERN"
+
+NO_UPDATE = "NO_UPDATE"
+SKIP_PATTERN_ONLY_SAME_SIZE = "SKIP_PATTERN_ONLY_SAME_SIZE"
+UPDATE_ACCESSION_CHANGED = "UPDATE_ACCESSION_CHANGED"
+UPDATE_GTF_URL_CHANGED = "UPDATE_GTF_URL_CHANGED"
+UPDATE_PRE_RELEASE = "UPDATE_PRE_RELEASE"
+UPDATE_PROVENANCE_ONLY = "UPDATE_PROVENANCE_ONLY"
+UPDATE_GTF_SIZE_CHANGED = "UPDATE_GTF_SIZE_CHANGED"
+UPDATE_GTF_SIZE_UNKNOWN = "UPDATE_GTF_SIZE_UNKNOWN"
+
 
 
 # main selection logic
@@ -767,3 +788,483 @@ def print_ambiguous_no_assembly_metadata(
     finally:
         es.close_point_in_time(id=body["pit"]["id"])
 
+# ES and BQ comparison
+
+def fetch_bq_provenance_by_tax_id(
+    project_id: str,
+    dataset: str,
+    table: str = "bp_provenance_metadata",
+) -> dict[str, dict]:
+    client = bigquery.Client(project=project_id)
+
+    query = f"""
+        SELECT
+          CAST(tax_id AS STRING) AS tax_id,
+          accession,
+          GTF,
+          Biodiversity_portal,
+          Ensembl_browser,
+          gbif_url
+        FROM `{project_id}.{dataset}.{table}`
+        WHERE tax_id IS NOT NULL
+    """
+
+    rows = client.query(query).result()
+
+    by_tax_id = {}
+    duplicates = {}
+
+    for row in rows:
+        record = dict(row.items())
+        tax_id = record["tax_id"]
+
+        if tax_id in by_tax_id:
+            duplicates.setdefault(tax_id, [by_tax_id[tax_id]]).append(record)
+            continue
+
+        by_tax_id[tax_id] = record
+
+    if duplicates:
+        print(
+            json.dumps(
+                {
+                    "warning": "duplicate_tax_ids_in_bp_provenance_metadata",
+                    "duplicate_count": len(duplicates),
+                    "sample_tax_ids": list(duplicates)[:20],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+
+    return by_tax_id
+
+
+def compare_es_annotations_to_bq_provenance(
+    es_host: str,
+    es_password: str,
+    es_index: str,
+    bq_project_id: str,
+    bq_dataset: str,
+    page_size: int = 500,
+    limit_updates: int | None = None,
+) -> dict:
+    bq_by_tax_id = fetch_bq_provenance_by_tax_id(
+        project_id=bq_project_id,
+        dataset=bq_dataset,
+    )
+
+    host = es_host if es_host.startswith("http") else f"https://{es_host}"
+
+    es = Elasticsearch(
+        hosts=[host],
+        basic_auth=("elastic", es_password),
+        request_timeout=30,
+        retry_on_timeout=True,
+        max_retries=3,
+    )
+
+    pit_id = es.open_point_in_time(index=es_index, keep_alive="2m")
+
+    body = {
+        "size": page_size,
+        "query": {"term": {"annotation_complete": "Done"}},
+        "_source": [
+            "tax_id",
+            "organism",
+            "scientific_name",
+            "annotation.accession",
+            "annotation.species",
+            "annotation.annotation.GTF",
+            "annotation.view_in_browser",
+            "annotation.annotation_method",
+            "annotation.busco_score",
+            "assemblies.accession",
+            "assemblies.assembly_name",
+            "assemblies.description",
+            "assemblies.version",
+            "assemblies.last_updated",
+        ],
+        "sort": [{"_shard_doc": "asc"}],
+        "pit": {"id": pit_id["id"], "keep_alive": "2m"},
+    }
+
+    summary = Counter()
+    action_counts = Counter()
+    update_manifest = []
+    gtf_reload_updates = []
+    provenance_only_updates = []
+    skipped_pattern_only_same_size = []
+    rejected_missing_gtf_url = []
+    skipped_examples = defaultdict(list)
+
+    try:
+        while True:
+            response = es.search(body=body)
+            hits = response["hits"]["hits"]
+
+            if not hits:
+                break
+
+            for hit in hits:
+                source = hit["_source"]
+                selected = select_latest_main_annotation(source)
+                tax_id = str(source.get("tax_id"))
+
+                summary["es_records_scanned"] += 1
+
+                if selected.get("status") != "SELECTED":
+                    summary[f"selector_{selected.get('status')}"] += 1
+
+                    if selected.get("status") == REJECTED_MISSING_GTF_URL:
+                        rejected_missing_gtf_url.append(
+                            {
+                                "tax_id": tax_id,
+                                "organism": source.get("organism") or source.get("scientific_name"),
+                                "selected": selected,
+                            }
+                        )
+
+                    elif len(skipped_examples[selected.get("status")]) < 10:
+                        skipped_examples[selected.get("status")].append(
+                            {
+                                "tax_id": tax_id,
+                                "organism": source.get("organism") or source.get("scientific_name"),
+                                "selected": selected,
+                            }
+                        )
+                    continue
+
+                bq_record = bq_by_tax_id.get(tax_id)
+                if not bq_record:
+                    summary["missing_bq_provenance_row"] += 1
+                    continue
+
+                previous_gtf = bq_record.get("GTF")
+                new_gtf = selected.get("gtf_url")
+                previous_gtf_pattern = classify_gtf_url_pattern(previous_gtf)
+                new_gtf_pattern = classify_gtf_url_pattern(new_gtf)
+
+                previous_gtf_metadata = None
+                new_gtf_metadata = None
+                needs_metadata_check = (
+                    bq_record.get("accession") == selected.get("accession")
+                    and previous_gtf != new_gtf
+                    and previous_gtf_pattern == OLD_FTP_PATTERN
+                    and new_gtf_pattern == NEW_FTP_PATTERN
+                )
+
+                if needs_metadata_check:
+                    summary["gtf_metadata_checks"] += 1
+                    previous_gtf_metadata = fetch_gtf_url_metadata(previous_gtf)
+                    new_gtf_metadata = fetch_gtf_url_metadata(new_gtf)
+
+                    if previous_gtf_metadata.get("ok") and new_gtf_metadata.get("ok"):
+                        summary["gtf_metadata_check_succeeded"] += 1
+                    else:
+                        summary["gtf_metadata_check_failed"] += 1
+
+                comparison = compare_selected_annotation_to_provenance(
+                    selected=selected,
+                    provenance=bq_record,
+                    previous_gtf_metadata=previous_gtf_metadata,
+                    new_gtf_metadata=new_gtf_metadata,
+                )
+
+                action = comparison["action"]
+                action_counts[action] += 1
+                summary[f"action_{action}"] += 1
+
+                if comparison["requires_provenance_update"]:
+                    update_manifest.append(comparison)
+
+                if comparison["requires_gtf_reload"]:
+                    gtf_reload_updates.append(comparison)
+
+                if action == UPDATE_PROVENANCE_ONLY:
+                    provenance_only_updates.append(comparison)
+
+                if action == SKIP_PATTERN_ONLY_SAME_SIZE:
+                    skipped_pattern_only_same_size.append(comparison)
+
+                if action == NO_UPDATE:
+                    summary["no_update"] += 1
+
+                if limit_updates and len(update_manifest) >= limit_updates:
+                    break
+
+            if limit_updates and len(update_manifest) >= limit_updates:
+                break
+
+            body["search_after"] = hits[-1]["sort"]
+            body["pit"]["id"] = response.get("pit_id", body["pit"]["id"])
+
+    finally:
+        es.close_point_in_time(id=body["pit"]["id"])
+
+    result = {
+        "summary": dict(summary),
+        "action_counts": dict(action_counts),
+        "update_manifest_count": len(update_manifest),
+        "gtf_reload_update_count": len(gtf_reload_updates),
+        "provenance_only_update_count": len(provenance_only_updates),
+        "skipped_pattern_only_same_size_count": len(skipped_pattern_only_same_size),
+        "rejected_missing_gtf_url_count": len(rejected_missing_gtf_url),
+        "update_manifest_sample": update_manifest[:20],
+        "gtf_reload_updates_sample": gtf_reload_updates[:20],
+        "provenance_only_updates_sample": provenance_only_updates[:20],
+        "skipped_pattern_only_same_size_sample": skipped_pattern_only_same_size[:20],
+        "rejected_missing_gtf_url_sample": rejected_missing_gtf_url[:20],
+        "skipped_examples": dict(skipped_examples),
+    }
+
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return result
+
+
+# Fetching FTP metadata
+
+def classify_gtf_url_pattern(url: str | None) -> str:
+    if not url:
+        return UNKNOWN_GTF_PATTERN
+
+    if "/pub/databases/ensembl/pre-release/" in url:
+        return PRE_RELEASE_PATTERN
+
+    if "/pub/ensemblorganisms/GCA/" in url:
+        return NEW_FTP_PATTERN
+
+    if "/pub/ensemblorganisms/" in url and "/GCA_" in url:
+        return OLD_FTP_PATTERN
+
+    return UNKNOWN_GTF_PATTERN
+
+
+def compare_selected_annotation_to_provenance(
+    selected: dict[str, Any],
+    provenance: dict[str, Any],
+    previous_gtf_metadata: dict[str, Any] | None = None,
+    new_gtf_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    previous_accession = provenance.get("accession")
+    new_accession = selected.get("accession")
+
+    previous_gtf_url = provenance.get("GTF")
+    new_gtf_url = selected.get("gtf_url")
+
+    old_ensembl_url = provenance.get("Ensembl_browser")
+    new_ensembl_url = selected.get("view_in_browser")
+
+    previous_pattern = classify_gtf_url_pattern(previous_gtf_url)
+    new_pattern = classify_gtf_url_pattern(new_gtf_url)
+
+    accession_changed = previous_accession != new_accession
+    gtf_url_changed = previous_gtf_url != new_gtf_url
+    ensembl_url_changed = old_ensembl_url != new_ensembl_url
+
+    base_result = {
+        "tax_id": str(selected.get("tax_id")),
+        "species": selected.get("species"),
+        "previous_accession": previous_accession,
+        "new_accession": new_accession,
+        "accession_root": selected.get("accession_root"),
+        "accession_version": selected.get("accession_version"),
+        "previous_gtf_url": previous_gtf_url,
+        "new_gtf_url": new_gtf_url,
+        "previous_gtf_url_pattern": previous_pattern,
+        "new_gtf_url_pattern": new_pattern,
+        "old_ensembl_url": old_ensembl_url,
+        "new_ensembl_url": new_ensembl_url,
+        "Biodiversity_portal": provenance.get("Biodiversity_portal"),
+        "gbif_url": provenance.get("gbif_url"),
+        "selection_reason": selected.get("selection_reason"),
+        "assembly_classification": selected.get("assembly_classification"),
+        "previous_gtf_size_bytes": (
+            previous_gtf_metadata or {}
+        ).get("size_bytes"),
+        "new_gtf_size_bytes": (
+            new_gtf_metadata or {}
+        ).get("size_bytes"),
+        "previous_gtf_last_modified": (
+            previous_gtf_metadata or {}
+        ).get("last_modified_raw"),
+        "new_gtf_last_modified": (
+            new_gtf_metadata or {}
+        ).get("last_modified_raw"),
+    }
+
+    if not accession_changed and not gtf_url_changed and not ensembl_url_changed:
+        return {
+            **base_result,
+            "action": NO_UPDATE,
+            "requires_provenance_update": False,
+            "requires_gtf_reload": False,
+        }
+
+    if accession_changed:
+        return {
+            **base_result,
+            "action": UPDATE_ACCESSION_CHANGED,
+            "requires_provenance_update": True,
+            "requires_gtf_reload": True,
+        }
+
+    if gtf_url_changed and new_pattern == PRE_RELEASE_PATTERN:
+        return {
+            **base_result,
+            "action": UPDATE_PRE_RELEASE,
+            "requires_provenance_update": True,
+            "requires_gtf_reload": True,
+        }
+
+    is_old_to_new_same_accession = (
+        not accession_changed
+        and previous_pattern == OLD_FTP_PATTERN
+        and new_pattern == NEW_FTP_PATTERN
+    )
+
+    if gtf_url_changed and is_old_to_new_same_accession:
+        previous_size = (previous_gtf_metadata or {}).get("size_bytes")
+        new_size = (new_gtf_metadata or {}).get("size_bytes")
+
+        if previous_size is not None and previous_size == new_size:
+            if ensembl_url_changed:
+                return {
+                    **base_result,
+                    "action": UPDATE_PROVENANCE_ONLY,
+                    "requires_provenance_update": True,
+                    "requires_gtf_reload": False,
+                }
+
+            return {
+                **base_result,
+                "action": SKIP_PATTERN_ONLY_SAME_SIZE,
+                "requires_provenance_update": False,
+                "requires_gtf_reload": False,
+            }
+
+        if previous_size is None or new_size is None:
+            return {
+                **base_result,
+                "action": UPDATE_GTF_SIZE_UNKNOWN,
+                "requires_provenance_update": True,
+                "requires_gtf_reload": True,
+            }
+
+        return {
+            **base_result,
+            "action": UPDATE_GTF_SIZE_CHANGED,
+            "requires_provenance_update": True,
+            "requires_gtf_reload": True,
+        }
+
+    if gtf_url_changed:
+        return {
+            **base_result,
+            "action": UPDATE_GTF_URL_CHANGED,
+            "requires_provenance_update": True,
+            "requires_gtf_reload": True,
+        }
+
+    if ensembl_url_changed:
+        return {
+            **base_result,
+            "action": UPDATE_PROVENANCE_ONLY,
+            "requires_provenance_update": True,
+            "requires_gtf_reload": False,
+        }
+
+    return {
+        **base_result,
+        "action": NO_UPDATE,
+        "requires_provenance_update": False,
+        "requires_gtf_reload": False,
+    }
+
+
+def fetch_gtf_url_metadata(
+    url: str,
+    timeout_seconds: int = 20,
+    max_attempts: int = 3,
+) -> dict[str, Any]:
+    """
+    Fetch lightweight metadata for a remote GTF file without downloading it.
+
+    Uses HTTP HEAD against https://ftp.ebi.ac.uk URLs. The returned size is the
+    compressed .gtf.gz object size in bytes, matching the file served at the URL.
+    """
+    last_error = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = requests.head(
+                url,
+                allow_redirects=True,
+                timeout=timeout_seconds,
+            )
+
+            if response.status_code == 405:
+                response = requests.get(
+                    url,
+                    headers={"Range": "bytes=0-0"},
+                    stream=True,
+                    timeout=timeout_seconds,
+                )
+
+            response.raise_for_status()
+
+            headers = response.headers
+            size_bytes = _parse_content_size(headers)
+            last_modified_raw = headers.get("Last-Modified")
+
+            return {
+                "url": url,
+                "ok": True,
+                "status_code": response.status_code,
+                "size_bytes": size_bytes,
+                "last_modified": _parse_http_datetime(last_modified_raw),
+                "last_modified_raw": last_modified_raw,
+                "etag": headers.get("ETag"),
+                "error": None,
+            }
+
+        except requests.RequestException as exc:
+            last_error = str(exc)
+
+            if attempt < max_attempts:
+                time.sleep(1.5 ** attempt)
+
+    return {
+        "url": url,
+        "ok": False,
+        "status_code": None,
+        "size_bytes": None,
+        "last_modified": None,
+        "last_modified_raw": None,
+        "etag": None,
+        "error": last_error,
+    }
+
+
+def _parse_content_size(headers: requests.structures.CaseInsensitiveDict) -> int | None:
+    content_range = headers.get("Content-Range")
+    if content_range and "/" in content_range:
+        total_size = content_range.rsplit("/", 1)[-1]
+        if total_size.isdigit():
+            return int(total_size)
+
+    content_length = headers.get("Content-Length")
+    if content_length and content_length.isdigit():
+        return int(content_length)
+
+    return None
+
+
+def _parse_http_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+
+    try:
+        return parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
