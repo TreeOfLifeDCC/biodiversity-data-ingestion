@@ -1,36 +1,52 @@
+"""Utilities for detecting genome annotation updates.
+
+The update workflow is intentionally split into two stages so it can be
+plugged into separate Airflow TaskFlow tasks later:
+
+1. Select the authoritative annotation for each Elasticsearch record.
+2. Compare those selections against BigQuery provenance metadata and build
+   manifests for provenance-only updates and GTF reloads.
+"""
+
 import json
+import os
 import re
 import time
-import requests
 
 from collections import Counter, defaultdict
 from datetime import datetime
-from elasticsearch import Elasticsearch
 from email.utils import parsedate_to_datetime
-from google.cloud import bigquery
 from typing import Any
 
+import requests
 
-# Constants
+from elasticsearch import Elasticsearch
+from google.cloud import bigquery
+
+
 ACCESSION_RE = re.compile(r"^(GCA_\d+)(?:\.(\d+))?$")
-# Assembly classification constants
+
+# Assembly classification values used by the selector.
 EXPLICIT_MAIN_ASSEMBLY = "EXPLICIT_MAIN_ASSEMBLY"
 HAPLOTYPE_OR_ALTERNATE_ASSEMBLY = "HAPLOTYPE_OR_ALTERNATE_ASSEMBLY"
 UNMARKED_ASSEMBLY_CANDIDATE = "UNMARKED_ASSEMBLY_CANDIDATE"
 NO_MATCHING_ASSEMBLY_METADATA = "NO_MATCHING_ASSEMBLY_METADATA"
-# GTF constants
+
+# Selector statuses.
 SELECTED = "SELECTED"
 REJECTED_NO_VALID_ANNOTATION_CANDIDATES = (
     "REJECTED_NO_VALID_ANNOTATION_CANDIDATES"
 )
 REJECTED_MISSING_GTF_URL = "REJECTED_MISSING_GTF_URL"
 REJECTED_NO_SELECTABLE_ANNOTATION = "REJECTED_NO_SELECTABLE_ANNOTATION"
-# Other constants
+
+# GTF URL layout classes.
 NEW_FTP_PATTERN = "NEW_FTP_PATTERN"
 OLD_FTP_PATTERN = "OLD_FTP_PATTERN"
 PRE_RELEASE_PATTERN = "PRE_RELEASE_PATTERN"
 UNKNOWN_GTF_PATTERN = "UNKNOWN_GTF_PATTERN"
 
+# Manifest action values consumed by downstream update tasks.
 NO_UPDATE = "NO_UPDATE"
 SKIP_PATTERN_ONLY_SAME_SIZE = "SKIP_PATTERN_ONLY_SAME_SIZE"
 UPDATE_ACCESSION_CHANGED = "UPDATE_ACCESSION_CHANGED"
@@ -41,9 +57,9 @@ UPDATE_GTF_SIZE_CHANGED = "UPDATE_GTF_SIZE_CHANGED"
 UPDATE_GTF_SIZE_UNKNOWN = "UPDATE_GTF_SIZE_UNKNOWN"
 
 
-
-# main selection logic
+# Stage 1: select the current authoritative annotation from Elasticsearch.
 def parse_accession(accession: str | None) -> tuple[str | None, int | None]:
+    """Split an accession like GCA_000001405.40 into root and version."""
     if not accession:
         return None, None
 
@@ -60,6 +76,7 @@ def classify_assembly(
     assembly_name: str | None,
     description: str | None,
 ) -> str:
+    """Classify assembly metadata as main-like, haplotype/alternate, or unknown."""
     text = " ".join(
         value.lower()
         for value in [assembly_name, description]
@@ -202,6 +219,13 @@ def choose_hap1_or_fallback(
 
 
 def select_latest_main_annotation(source: dict[str, Any]) -> dict[str, Any]:
+    """Select the best annotation candidate from one Elasticsearch record.
+
+    The selector prefers explicit main assemblies, then unmarked assemblies,
+    then records without matching assembly metadata. If only non-main
+    candidates are available, it chooses hap1 when present and otherwise falls
+    back to highest accession version with annotation-order tie breaking.
+    """
     annotations = source.get("annotation") or []
     assemblies = source.get("assemblies") or []
 
@@ -788,13 +812,14 @@ def print_ambiguous_no_assembly_metadata(
     finally:
         es.close_point_in_time(id=body["pit"]["id"])
 
-# ES and BQ comparison
+# Service adapters and stage wrappers.
 
 def fetch_bq_provenance_by_tax_id(
     project_id: str,
     dataset: str,
     table: str = "bp_provenance_metadata",
 ) -> dict[str, dict]:
+    """Fetch current provenance rows once and index them by tax_id."""
     client = bigquery.Client(project=project_id)
 
     query = f"""
@@ -840,22 +865,47 @@ def fetch_bq_provenance_by_tax_id(
     return by_tax_id
 
 
-def compare_es_annotations_to_bq_provenance(
+def write_jsonl(path: str, records: list[dict[str, Any]]) -> None:
+    """Write manifest records as newline-delimited JSON."""
+    parent_dir = os.path.dirname(path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+
+    with open(path, "w", encoding="utf-8") as file:
+        for record in records:
+            file.write(json.dumps(record, sort_keys=True, default=str))
+            file.write("\n")
+
+
+def read_jsonl(path: str) -> list[dict[str, Any]]:
+    """Read newline-delimited JSON manifest records."""
+    records = []
+
+    with open(path, "r", encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+
+            records.append(json.loads(line))
+
+    return records
+
+
+def fetch_selected_annotations_from_elasticsearch(
     es_host: str,
     es_password: str,
     es_index: str,
-    bq_project_id: str,
-    bq_dataset: str,
     page_size: int = 500,
-    limit_updates: int | None = None,
 ) -> dict:
-    bq_by_tax_id = fetch_bq_provenance_by_tax_id(
-        project_id=bq_project_id,
-        dataset=bq_dataset,
-    )
+    """Stage 1 wrapper: query Elasticsearch and persistable selector results.
 
+    This function is shaped to become the first Airflow TaskFlow task. Its
+    returned ``selected_annotations`` list is the Stage 1 manifest and can be
+    written to GCS/JSONL so later tasks do not need to query Elasticsearch
+    again.
+    """
     host = es_host if es_host.startswith("http") else f"https://{es_host}"
-
     es = Elasticsearch(
         hosts=[host],
         basic_auth=("elastic", es_password),
@@ -890,11 +940,8 @@ def compare_es_annotations_to_bq_provenance(
     }
 
     summary = Counter()
-    action_counts = Counter()
-    update_manifest = []
-    gtf_reload_updates = []
-    provenance_only_updates = []
-    skipped_pattern_only_same_size = []
+    reason_counts = Counter()
+    selected_annotations = []
     rejected_missing_gtf_url = []
     skipped_examples = defaultdict(list)
 
@@ -935,66 +982,15 @@ def compare_es_annotations_to_bq_provenance(
                         )
                     continue
 
-                bq_record = bq_by_tax_id.get(tax_id)
-                if not bq_record:
-                    summary["missing_bq_provenance_row"] += 1
-                    continue
-
-                previous_gtf = bq_record.get("GTF")
-                new_gtf = selected.get("gtf_url")
-                previous_gtf_pattern = classify_gtf_url_pattern(previous_gtf)
-                new_gtf_pattern = classify_gtf_url_pattern(new_gtf)
-
-                previous_gtf_metadata = None
-                new_gtf_metadata = None
-                needs_metadata_check = (
-                    bq_record.get("accession") == selected.get("accession")
-                    and previous_gtf != new_gtf
-                    and previous_gtf_pattern == OLD_FTP_PATTERN
-                    and new_gtf_pattern == NEW_FTP_PATTERN
+                reason_counts[selected.get("selection_reason", "NO_REASON")] += 1
+                selected_annotations.append(
+                    {
+                        **selected,
+                        "es_id": hit.get("_id"),
+                        "organism": source.get("organism") or source.get("scientific_name"),
+                    }
                 )
-
-                if needs_metadata_check:
-                    summary["gtf_metadata_checks"] += 1
-                    previous_gtf_metadata = fetch_gtf_url_metadata(previous_gtf)
-                    new_gtf_metadata = fetch_gtf_url_metadata(new_gtf)
-
-                    if previous_gtf_metadata.get("ok") and new_gtf_metadata.get("ok"):
-                        summary["gtf_metadata_check_succeeded"] += 1
-                    else:
-                        summary["gtf_metadata_check_failed"] += 1
-
-                comparison = compare_selected_annotation_to_provenance(
-                    selected=selected,
-                    provenance=bq_record,
-                    previous_gtf_metadata=previous_gtf_metadata,
-                    new_gtf_metadata=new_gtf_metadata,
-                )
-
-                action = comparison["action"]
-                action_counts[action] += 1
-                summary[f"action_{action}"] += 1
-
-                if comparison["requires_provenance_update"]:
-                    update_manifest.append(comparison)
-
-                if comparison["requires_gtf_reload"]:
-                    gtf_reload_updates.append(comparison)
-
-                if action == UPDATE_PROVENANCE_ONLY:
-                    provenance_only_updates.append(comparison)
-
-                if action == SKIP_PATTERN_ONLY_SAME_SIZE:
-                    skipped_pattern_only_same_size.append(comparison)
-
-                if action == NO_UPDATE:
-                    summary["no_update"] += 1
-
-                if limit_updates and len(update_manifest) >= limit_updates:
-                    break
-
-            if limit_updates and len(update_manifest) >= limit_updates:
-                break
+                summary["selected_annotations"] += 1
 
             body["search_after"] = hits[-1]["sort"]
             body["pit"]["id"] = response.get("pit_id", body["pit"]["id"])
@@ -1002,29 +998,180 @@ def compare_es_annotations_to_bq_provenance(
     finally:
         es.close_point_in_time(id=body["pit"]["id"])
 
-    result = {
+    return {
+        "summary": dict(summary),
+        "reason_counts": dict(reason_counts),
+        "selected_annotations_count": len(selected_annotations),
+        "selected_annotations": selected_annotations,
+        "rejected_missing_gtf_url_count": len(rejected_missing_gtf_url),
+        "rejected_missing_gtf_url": rejected_missing_gtf_url,
+        "skipped_examples": dict(skipped_examples),
+    }
+
+
+def build_update_manifest_from_selected_annotations(
+    selected_annotations: list[dict[str, Any]],
+    bq_by_tax_id: dict[str, dict],
+    limit_updates: int | None = None,
+) -> dict:
+    """Stage 2 wrapper: compare selected annotations to provenance rows.
+
+    Builds grouped manifests for:
+    - all provenance updates,
+    - updates requiring GTF reload,
+    - provenance-only updates,
+    - old-to-new FTP path migrations that can be skipped.
+    """
+    summary = Counter()
+    action_counts = Counter()
+    update_manifest = []
+    gtf_reload_updates = []
+    provenance_only_updates = []
+    skipped_pattern_only_same_size = []
+
+    for selected in selected_annotations:
+        tax_id = str(selected.get("tax_id"))
+        summary["selected_annotations_read"] += 1
+
+        bq_record = bq_by_tax_id.get(tax_id)
+        if not bq_record:
+            summary["missing_bq_provenance_row"] += 1
+            continue
+
+        previous_gtf = bq_record.get("GTF")
+        new_gtf = selected.get("gtf_url")
+        previous_gtf_pattern = classify_gtf_url_pattern(previous_gtf)
+        new_gtf_pattern = classify_gtf_url_pattern(new_gtf)
+
+        previous_gtf_metadata = None
+        new_gtf_metadata = None
+        needs_metadata_check = should_check_gtf_metadata(
+            selected=selected,
+            provenance=bq_record,
+            previous_gtf_pattern=previous_gtf_pattern,
+            new_gtf_pattern=new_gtf_pattern,
+        )
+
+        if needs_metadata_check:
+            summary["gtf_metadata_checks"] += 1
+            previous_gtf_metadata = fetch_gtf_url_metadata(previous_gtf)
+            new_gtf_metadata = fetch_gtf_url_metadata(new_gtf)
+
+            if previous_gtf_metadata.get("ok") and new_gtf_metadata.get("ok"):
+                summary["gtf_metadata_check_succeeded"] += 1
+            else:
+                summary["gtf_metadata_check_failed"] += 1
+
+        comparison = compare_selected_annotation_to_provenance(
+            selected=selected,
+            provenance=bq_record,
+            previous_gtf_metadata=previous_gtf_metadata,
+            new_gtf_metadata=new_gtf_metadata,
+        )
+
+        action = comparison["action"]
+        action_counts[action] += 1
+        summary[f"action_{action}"] += 1
+
+        if comparison["requires_provenance_update"]:
+            update_manifest.append(comparison)
+
+        if comparison["requires_gtf_reload"]:
+            gtf_reload_updates.append(comparison)
+
+        if action == UPDATE_PROVENANCE_ONLY:
+            provenance_only_updates.append(comparison)
+
+        if action == SKIP_PATTERN_ONLY_SAME_SIZE:
+            skipped_pattern_only_same_size.append(comparison)
+
+        if action == NO_UPDATE:
+            summary["no_update"] += 1
+
+        if limit_updates and len(update_manifest) >= limit_updates:
+            break
+
+    return {
         "summary": dict(summary),
         "action_counts": dict(action_counts),
         "update_manifest_count": len(update_manifest),
         "gtf_reload_update_count": len(gtf_reload_updates),
         "provenance_only_update_count": len(provenance_only_updates),
         "skipped_pattern_only_same_size_count": len(skipped_pattern_only_same_size),
-        "rejected_missing_gtf_url_count": len(rejected_missing_gtf_url),
+        "update_manifest": update_manifest,
+        "gtf_reload_updates": gtf_reload_updates,
+        "provenance_only_updates": provenance_only_updates,
+        "skipped_pattern_only_same_size": skipped_pattern_only_same_size,
         "update_manifest_sample": update_manifest[:20],
         "gtf_reload_updates_sample": gtf_reload_updates[:20],
         "provenance_only_updates_sample": provenance_only_updates[:20],
         "skipped_pattern_only_same_size_sample": skipped_pattern_only_same_size[:20],
-        "rejected_missing_gtf_url_sample": rejected_missing_gtf_url[:20],
-        "skipped_examples": dict(skipped_examples),
+    }
+
+
+def compare_es_annotations_to_bq_provenance(
+    es_host: str,
+    es_password: str,
+    es_index: str,
+    bq_project_id: str,
+    bq_dataset: str,
+    page_size: int = 500,
+    limit_updates: int | None = None,
+) -> dict:
+    """Local convenience runner for Stage 1 followed by Stage 2.
+
+    Airflow should use the two stage functions directly so the Stage 1 manifest
+    can be persisted and reused across retries.
+    """
+    selected_result = fetch_selected_annotations_from_elasticsearch(
+        es_host=es_host,
+        es_password=es_password,
+        es_index=es_index,
+        page_size=page_size,
+    )
+    bq_by_tax_id = fetch_bq_provenance_by_tax_id(
+        project_id=bq_project_id,
+        dataset=bq_dataset,
+    )
+    manifest_result = build_update_manifest_from_selected_annotations(
+        selected_annotations=selected_result["selected_annotations"],
+        bq_by_tax_id=bq_by_tax_id,
+        limit_updates=limit_updates,
+    )
+
+    summary = Counter(selected_result["summary"])
+    summary.update(manifest_result["summary"])
+
+    result = {
+        "summary": dict(summary),
+        "selection_summary": selected_result["summary"],
+        "selection_reason_counts": selected_result["reason_counts"],
+        "action_counts": manifest_result["action_counts"],
+        "update_manifest_count": manifest_result["update_manifest_count"],
+        "gtf_reload_update_count": manifest_result["gtf_reload_update_count"],
+        "provenance_only_update_count": manifest_result["provenance_only_update_count"],
+        "skipped_pattern_only_same_size_count": (
+            manifest_result["skipped_pattern_only_same_size_count"]
+        ),
+        "rejected_missing_gtf_url_count": selected_result["rejected_missing_gtf_url_count"],
+        "update_manifest_sample": manifest_result["update_manifest_sample"],
+        "gtf_reload_updates_sample": manifest_result["gtf_reload_updates_sample"],
+        "provenance_only_updates_sample": manifest_result["provenance_only_updates_sample"],
+        "skipped_pattern_only_same_size_sample": (
+            manifest_result["skipped_pattern_only_same_size_sample"]
+        ),
+        "rejected_missing_gtf_url_sample": selected_result["rejected_missing_gtf_url"][:20],
+        "skipped_examples": selected_result["skipped_examples"],
     }
 
     print(json.dumps(result, indent=2, sort_keys=True))
     return result
 
 
-# Fetching FTP metadata
+# Stage 2: compare selected annotations to provenance metadata.
 
 def classify_gtf_url_pattern(url: str | None) -> str:
+    """Classify the known Ensembl GTF URL layouts."""
     if not url:
         return UNKNOWN_GTF_PATTERN
 
@@ -1040,12 +1187,38 @@ def classify_gtf_url_pattern(url: str | None) -> str:
     return UNKNOWN_GTF_PATTERN
 
 
+def should_check_gtf_metadata(
+    selected: dict[str, Any],
+    provenance: dict[str, Any],
+    previous_gtf_pattern: str,
+    new_gtf_pattern: str,
+) -> bool:
+    """Return whether the old/new FTP URLs need a file metadata comparison.
+
+    The size check is only used for the same accession moving from the old
+    species-based FTP layout to the newer accession-sharded FTP layout.
+    Pre-release URLs are intentionally excluded from this optimization.
+    """
+    return (
+        provenance.get("accession") == selected.get("accession")
+        and provenance.get("GTF") != selected.get("gtf_url")
+        and previous_gtf_pattern == OLD_FTP_PATTERN
+        and new_gtf_pattern == NEW_FTP_PATTERN
+    )
+
+
 def compare_selected_annotation_to_provenance(
     selected: dict[str, Any],
     provenance: dict[str, Any],
     previous_gtf_metadata: dict[str, Any] | None = None,
     new_gtf_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Compare one selected annotation against one BQ provenance row.
+
+    This pure decision function does not query Elasticsearch, BigQuery, or FTP.
+    Optional GTF metadata should be supplied only for the same-accession
+    OLD_FTP_PATTERN -> NEW_FTP_PATTERN case.
+    """
     previous_accession = provenance.get("accession")
     new_accession = selected.get("accession")
 
@@ -1128,6 +1301,8 @@ def compare_selected_annotation_to_provenance(
         new_size = (new_gtf_metadata or {}).get("size_bytes")
 
         if previous_size is not None and previous_size == new_size:
+            # The file is unchanged; only update provenance if another
+            # provenance field, such as Ensembl_browser, changed.
             if ensembl_url_changed:
                 return {
                     **base_result,
