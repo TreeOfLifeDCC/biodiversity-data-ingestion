@@ -20,8 +20,11 @@ from typing import Any
 
 import requests
 
+from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from elasticsearch import Elasticsearch
 from google.cloud import bigquery
+
+from biodiv_airflow.helpers import split_gcs_uri
 
 
 ACCESSION_RE = re.compile(r"^(GCA_\d+)(?:\.(\d+))?$")
@@ -892,8 +895,50 @@ def read_jsonl(path: str) -> list[dict[str, Any]]:
     return records
 
 
+def write_jsonl_to_gcs(
+    gcs_uri: str,
+    records: list[dict[str, Any]],
+    gcp_conn_id: str = "google_cloud_default",
+) -> None:
+    """Write manifest records as newline-delimited JSON to GCS."""
+    bucket_name, object_name = split_gcs_uri(gcs_uri)
+    payload = "".join(
+        f"{json.dumps(record, sort_keys=True, default=str)}\n"
+        for record in records
+    )
+
+    GCSHook(gcp_conn_id=gcp_conn_id).upload(
+        bucket_name=bucket_name,
+        object_name=object_name,
+        data=payload,
+        mime_type="application/x-ndjson",
+    )
+
+
+def read_jsonl_from_gcs(
+    gcs_uri: str,
+    gcp_conn_id: str = "google_cloud_default",
+) -> list[dict[str, Any]]:
+    """Read newline-delimited JSON manifest records from GCS."""
+    bucket_name, object_name = split_gcs_uri(gcs_uri)
+    payload = GCSHook(gcp_conn_id=gcp_conn_id).download(
+        bucket_name=bucket_name,
+        object_name=object_name,
+    )
+
+    if isinstance(payload, bytes):
+        payload = payload.decode("utf-8")
+
+    return [
+        json.loads(line)
+        for line in payload.splitlines()
+        if line.strip()
+    ]
+
+
 def fetch_selected_annotations_from_elasticsearch(
     es_host: str,
+    es_user: str,
     es_password: str,
     es_index: str,
     page_size: int = 500,
@@ -908,7 +953,7 @@ def fetch_selected_annotations_from_elasticsearch(
     host = es_host if es_host.startswith("http") else f"https://{es_host}"
     es = Elasticsearch(
         hosts=[host],
-        basic_auth=("elastic", es_password),
+        basic_auth=(es_user, es_password),
         request_timeout=30,
         retry_on_timeout=True,
         max_retries=3,
@@ -1006,6 +1051,46 @@ def fetch_selected_annotations_from_elasticsearch(
         "rejected_missing_gtf_url_count": len(rejected_missing_gtf_url),
         "rejected_missing_gtf_url": rejected_missing_gtf_url,
         "skipped_examples": dict(skipped_examples),
+    }
+
+
+def select_current_annotations(
+    *,
+    elastic_host: str,
+    elastic_user: str,
+    elastic_password: str,
+    elastic_index: str,
+    page_size: int,
+    selected_annotations_uri: str,
+    rejected_missing_gtf_uri: str,
+) -> dict[str, Any]:
+    """Airflow task callable for Stage 1: select and persist annotations."""
+    selected_result = fetch_selected_annotations_from_elasticsearch(
+        es_host=elastic_host,
+        es_user=elastic_user,
+        es_password=elastic_password,
+        es_index=elastic_index,
+        page_size=page_size,
+    )
+
+    write_jsonl_to_gcs(
+        selected_annotations_uri,
+        selected_result["selected_annotations"],
+    )
+    write_jsonl_to_gcs(
+        rejected_missing_gtf_uri,
+        selected_result["rejected_missing_gtf_url"],
+    )
+
+    return {
+        "selected_annotations_uri": selected_annotations_uri,
+        "rejected_missing_gtf_uri": rejected_missing_gtf_uri,
+        "selected_annotations_count": selected_result["selected_annotations_count"],
+        "rejected_missing_gtf_url_count": (
+            selected_result["rejected_missing_gtf_url_count"]
+        ),
+        "summary": selected_result["summary"],
+        "reason_counts": selected_result["reason_counts"],
     }
 
 
@@ -1109,8 +1194,60 @@ def build_update_manifest_from_selected_annotations(
     }
 
 
+def build_update_manifest(
+    *,
+    selected_annotations_uri: str,
+    bq_project_id: str,
+    bq_dataset: str,
+    update_manifest_uri: str,
+    gtf_reload_updates_uri: str,
+    provenance_only_updates_uri: str,
+    skipped_pattern_only_uri: str,
+) -> dict[str, Any]:
+    """Airflow task callable for Stage 2: compare and persist update manifests."""
+    selected_annotations = read_jsonl_from_gcs(selected_annotations_uri)
+    bq_by_tax_id = fetch_bq_provenance_by_tax_id(
+        project_id=bq_project_id,
+        dataset=bq_dataset,
+    )
+    manifest_result = build_update_manifest_from_selected_annotations(
+        selected_annotations=selected_annotations,
+        bq_by_tax_id=bq_by_tax_id,
+    )
+
+    write_jsonl_to_gcs(update_manifest_uri, manifest_result["update_manifest"])
+    write_jsonl_to_gcs(gtf_reload_updates_uri, manifest_result["gtf_reload_updates"])
+    write_jsonl_to_gcs(
+        provenance_only_updates_uri,
+        manifest_result["provenance_only_updates"],
+    )
+    write_jsonl_to_gcs(
+        skipped_pattern_only_uri,
+        manifest_result["skipped_pattern_only_same_size"],
+    )
+
+    return {
+        "selected_annotations_uri": selected_annotations_uri,
+        "update_manifest_uri": update_manifest_uri,
+        "gtf_reload_updates_uri": gtf_reload_updates_uri,
+        "provenance_only_updates_uri": provenance_only_updates_uri,
+        "skipped_pattern_only_uri": skipped_pattern_only_uri,
+        "action_counts": manifest_result["action_counts"],
+        "update_manifest_count": manifest_result["update_manifest_count"],
+        "gtf_reload_update_count": manifest_result["gtf_reload_update_count"],
+        "provenance_only_update_count": (
+            manifest_result["provenance_only_update_count"]
+        ),
+        "skipped_pattern_only_same_size_count": (
+            manifest_result["skipped_pattern_only_same_size_count"]
+        ),
+        "summary": manifest_result["summary"],
+    }
+
+
 def compare_es_annotations_to_bq_provenance(
     es_host: str,
+    es_user: str,
     es_password: str,
     es_index: str,
     bq_project_id: str,
@@ -1125,6 +1262,7 @@ def compare_es_annotations_to_bq_provenance(
     """
     selected_result = fetch_selected_annotations_from_elasticsearch(
         es_host=es_host,
+        es_user=es_user,
         es_password=es_password,
         es_index=es_index,
         page_size=page_size,
