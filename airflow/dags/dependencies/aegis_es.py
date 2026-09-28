@@ -127,6 +127,10 @@ SAMPLES_MAPPING = {
         "sampleAgeRangeYoungestLimit":       {"type": "float"},
         "damageTreatment":                   {"type": "keyword"},
         "masterCoreSampleId":                {"type": "keyword"},
+        "age":                               {"type": "integer"},
+        "taxaCount":                         {"type": "integer"},
+        "readTotal":                         {"type": "long"},
+        "community":                         {"type": "object", "enabled": False},
         # Custom fields (non-checklist characteristics)
         "customFields": {
             "type": "nested",

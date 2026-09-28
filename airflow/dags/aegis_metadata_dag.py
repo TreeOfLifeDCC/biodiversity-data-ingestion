@@ -24,6 +24,7 @@ from dependencies.aegis_ancient import (
 )
 from dependencies import collect_metadata_experiments_assemblies
 from dependencies.aegis_edna_taxa import build_edna_docs, TAXONOMY_FILE
+from dependencies.aegis_edna_layers import build_layer_communities
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,33 @@ def build_edna_species_docs(ancient_samples_docs: list[dict]) -> list[dict]:
 
 
 @task
+def link_layer_communities(
+    ancient_samples_docs: list[dict], edna_docs: list[dict]
+) -> list[dict]:
+    genus_taxid = {
+        d.get("scientificName"): d.get("taxId")
+        for d in edna_docs
+        if d.get("taxId") is not None
+    }
+    communities = build_layer_communities(TAXONOMY_FILE, genus_taxid=genus_taxid)
+    linked = 0
+    for doc in ancient_samples_docs:
+        if doc.get("dataType") != "environmental_dna":
+            continue
+        info = communities.get(doc.get("submitterId"))
+        if not info:
+            continue
+        if info.get("age") is not None:
+            doc["age"] = info["age"]
+        doc["taxaCount"] = info["taxaCount"]
+        doc["readTotal"] = info["readTotal"]
+        doc["community"] = info["community"]
+        linked += 1
+    logger.info("Linked %d ancient biosamples to their layer communities.", linked)
+    return ancient_samples_docs
+
+
+@task
 def index_to_es(
     samples_docs: list[dict],
     data_portal_docs: list[dict],
@@ -253,6 +281,7 @@ def aegis_metadata_ingestion():
     data_portal = build_data_portal_docs(metadata, annotations)
     ancient_samples = build_ancient_samples_docs(ancient_metadata)
     edna = build_edna_species_docs(ancient_samples)
+    ancient_samples = link_layer_communities(ancient_samples, edna)
     index_to_es(samples, data_portal, ancient_samples, edna)
 
 
