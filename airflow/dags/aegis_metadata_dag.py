@@ -18,6 +18,12 @@ import pendulum
 from airflow.decorators import dag, task
 from airflow.models import Variable
 from airflow.operators.python import PythonOperator
+from dependencies.aegis_ancient import (
+    build_ancient_sample_doc,
+    filter_ancient,
+)
+from dependencies import collect_metadata_experiments_assemblies
+from dependencies.aegis_edna_taxa import build_edna_docs, TAXONOMY_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +32,11 @@ from dependencies.aegis_projects import aegis_projects
 
 STUDY_ID = "PRJEB80366"
 PROJECT_NAME = aegis_projects[STUDY_ID]["project_name"]
+
+# Iceland ancient lake-sediment metagenomic project.
+ANCIENT_STUDY_ID = "PRJEB101868"
+ANCIENT_PROJECT_TAG = aegis_projects[ANCIENT_STUDY_ID].get("project_tag", "Aegis")
+ANCIENT_PROJECT_NAME = aegis_projects[ANCIENT_STUDY_ID]["project_name"]
 
 
 @task(multiple_outputs=False)
@@ -78,10 +89,14 @@ def build_samples_docs(metadata: dict) -> list[dict]:
         )
 
     common_name_cache: dict[str, str | None] = {}
-    return [
+    docs = [
         build_sample_doc(sample_id, record, common_name_cache)
         for sample_id, record in valid_metadata.items()
     ]
+    # Tag the data track
+    for d in docs:
+        d["dataType"] = "genome_assembly"
+    return docs
 
 
 @task(multiple_outputs=False)
@@ -118,16 +133,53 @@ def build_data_portal_docs(metadata: dict, annotations: dict) -> list[dict]:
     valid_metadata, _ = filter_by_checklist(metadata)
     # XCom serializes dict keys as strings; convert back to int taxIds.
     annotations_by_tax = {int(k): v for k, v in (annotations or {}).items()}
-    return _build(valid_metadata, annotations_by_tax)
+    docs = _build(valid_metadata, annotations_by_tax)
+    for d in docs:
+        d["dataType"] = "genome_assembly"
+    return docs
+
+
+@task(multiple_outputs=False)
+def fetch_ancient_metadata() -> dict:
+    return collect_metadata_experiments_assemblies.main(
+        ANCIENT_STUDY_ID, ANCIENT_PROJECT_TAG, ANCIENT_PROJECT_NAME
+    )
+
+
+@task
+def build_ancient_samples_docs(metadata: dict) -> list[dict]:
+    valid, blanks, other = filter_ancient(metadata)
+    docs = [
+        build_ancient_sample_doc(sample_id, record)
+        for sample_id, record in valid.items()
+    ]
+    for d in docs:
+        d["dataType"] = "environmental_dna"
+    return docs
+
+
+@task
+def build_edna_species_docs(ancient_samples_docs: list[dict]) -> list[dict]:
+    countries = sorted({
+        d["country"] for d in ancient_samples_docs if d.get("country")
+    }) or None
+    return build_edna_docs(TAXONOMY_FILE, resolve=True, countries=countries)
 
 
 @task
 def index_to_es(
     samples_docs: list[dict],
     data_portal_docs: list[dict],
+    ancient_samples_docs: list[dict],
+    edna_docs: list[dict],
 ) -> None:
     """Create indices, bulk index documents, rotate aliases, prune old indices."""
     from datetime import datetime
+
+    # Merge the modern (genome_assembly) and ancient (environmental_dna) tracks
+    # into the same indices
+    samples_docs = samples_docs + ancient_samples_docs
+    data_portal_docs = data_portal_docs + edna_docs
 
     from airflow.models import Variable
 
@@ -135,6 +187,7 @@ def index_to_es(
         get_es_client,
         create_index_with_mapping,
         bulk_index_documents,
+        _check_duplicate_ids,
         SAMPLES_MAPPING,
         DATA_PORTAL_MAPPING,
     )
@@ -155,6 +208,7 @@ def index_to_es(
 
     # Bulk index documents
     bulk_index_documents(es, samples_index, samples_docs, id_field="accession")
+    _check_duplicate_ids(data_portal_docs, id_field="taxId")
     bulk_index_documents(es, data_portal_index, data_portal_docs, id_field="taxId")
 
     # Rotate aliases onto today's indices and prune to the 2 newest
@@ -193,10 +247,13 @@ def aegis_metadata_ingestion():
     metadata = fetch_metadata()
     annotations = fetch_annotations()
     import_annotations_task >> annotations
+    ancient_metadata = fetch_ancient_metadata()
 
     samples = build_samples_docs(metadata)
     data_portal = build_data_portal_docs(metadata, annotations)
-    index_to_es(samples, data_portal)
+    ancient_samples = build_ancient_samples_docs(ancient_metadata)
+    edna = build_edna_species_docs(ancient_samples)
+    index_to_es(samples, data_portal, ancient_samples, edna)
 
 
 aegis_metadata_ingestion()

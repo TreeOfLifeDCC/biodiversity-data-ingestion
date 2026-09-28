@@ -55,6 +55,7 @@ SAMPLES_MAPPING = {
         "trackingSystem":        {"type": "keyword"},
         "projectTag":            {"type": "keyword"},
         "projectName":           {"type": "keyword"},
+        "dataType":              {"type": "keyword"},
         # Mandatory ERC000053 fields
         "organismPart":          {"type": "keyword"},
         "lifestage":             {"type": "keyword"},
@@ -112,6 +113,20 @@ SAMPLES_MAPPING = {
         "insdcLastUpdate":       {"type": "date"},
         "insdcStatus":           {"type": "keyword"},
         "externalReferences":    {"type": "keyword"},
+        # Ancient / environmental (ERC000059) first-class fields
+        "submitterId":                       {"type": "keyword"},
+        "description":                       _TEXT_KW_SHORT,
+        "environmentalMedium":               {"type": "keyword"},
+        "broadScaleEnvironmentalContext":    {"type": "keyword"},
+        "localEnvironmentalContext":         {"type": "keyword"},
+        "pastBroadScaleEnvironmentalContext":{"type": "keyword"},
+        "pastLocalEnvironmentalContext":     {"type": "keyword"},
+        "geologicalEpoch":                   {"type": "keyword"},
+        "sampleAgeInferenceMethod":          {"type": "keyword"},
+        "sampleAgeRangeOldestLimit":         {"type": "float"},
+        "sampleAgeRangeYoungestLimit":       {"type": "float"},
+        "damageTreatment":                   {"type": "keyword"},
+        "masterCoreSampleId":                {"type": "keyword"},
         # Custom fields (non-checklist characteristics)
         "customFields": {
             "type": "nested",
@@ -147,6 +162,8 @@ DATA_PORTAL_MAPPING = {
         "rawDataStatus":      {"type": "keyword"},
         "assembliesStatus":   {"type": "keyword"},
         "annotationStatus":   {"type": "keyword"},
+        "resolvedStatus":     {"type": "keyword"},
+        "unassignedStatus":   {"type": "keyword"},
         "rawData": {
             "properties": {
                 "study_accession":      _TEXT_KW,
@@ -180,6 +197,20 @@ DATA_PORTAL_MAPPING = {
         "sampleCount":        {"type": "integer"},
         "locations":          {"type": "geo_point"},
         "countries":          {"type": "keyword"},
+        # Data-track discriminator + environmental-DNA extras
+        "dataType":           {"type": "keyword"},
+        "readTotal":          {"type": "long"},
+        "ageOldest":          {"type": "integer"},
+        "ageYoungest":        {"type": "integer"},
+        # Per-layer abundance down the sediment core
+        "abundance": {
+            "type": "nested",
+            "properties": {
+                "age":   {"type": "integer"},
+                "reads": {"type": "long"},
+                "prop":  {"type": "float"},
+            },
+        },
         # Flat Ensembl-annotation records, produced by import_annotations.py
         # from _data/aegis/species.yaml (same shape as the dtol/erga/asg/gbdp
         # manifests). One nested entry per assembly accession.
@@ -234,6 +265,30 @@ def create_index_with_mapping(
         mappings=mapping,
     )
     logger.info("Created index %s", index_name)
+
+
+def _check_duplicate_ids(docs: list[dict], id_field: str = "taxId") -> dict:
+    seen: dict[str, str] = {}
+    dupes: dict[str, list[str]] = {}
+    for d in docs:
+        did = d.get(id_field)
+        if did is None:
+            continue
+        key = str(did)
+        name = d.get("scientificName", "?")
+        if key in seen:
+            dupes.setdefault(key, [seen[key]]).append(name)
+        else:
+            seen[key] = name
+    for did, names in dupes.items():
+        logger.warning(
+            "DUPLICATE %s=%s shared by %d docs %s -- only the LAST survives in ES; "
+            "resolve the clash (ENA synonyms?) before trusting the index.",
+            id_field, did, len(names), names,
+        )
+    if dupes:
+        logger.warning("%d taxId collision(s) detected in data_portal docs.", len(dupes))
+    return dupes
 
 
 def bulk_index_documents(
