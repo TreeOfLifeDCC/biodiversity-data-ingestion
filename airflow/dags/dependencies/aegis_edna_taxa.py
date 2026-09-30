@@ -61,7 +61,7 @@ def build_edna_docs(
         except (ValueError, KeyError):
             continue
         try:
-            sample_age[sid] = int(r["median_CE"])
+            sample_age[sid] = int(round(float(r["median_CE"])))
         except (ValueError, KeyError):
             pass
         sample_total[sid] = sample_total.get(sid, 0) + reads
@@ -79,7 +79,16 @@ def build_edna_docs(
             continue
         by_genus.setdefault(genus, {})[r["id"]] = reads
 
-    session = requests.Session()
+    genus_taxid: dict[str, int] = {}
+    for r in rows:
+        g = (r.get("genus") or "").strip() or "NA"
+        raw = (r.get("taxid") or r.get("taxId") or "").strip()
+        if g in genus_taxid or not raw:
+            continue
+        try:
+            genus_taxid[g] = int(raw)
+        except ValueError:
+            pass
     docs: list[dict] = []
     synth = _SYNTH_BASE
 
@@ -105,9 +114,9 @@ def build_edna_docs(
                      ("kingdom", "phylum", "class", "order", "family", "genus")}
         common_name = None
         scientific_name = "Unassigned" if is_unassigned else genus
-        if not is_unassigned and resolve:
-            tax_id = resolve_genus_taxid(genus, session)
-            if tax_id:
+        if not is_unassigned:
+            tax_id = genus_taxid.get(genus)
+            if tax_id is not None and resolve:
                 tax = fetch_taxonomy(tax_id)
                 phylogeny = tax["phylogeny"]
                 common_name = tax["commonName"]
