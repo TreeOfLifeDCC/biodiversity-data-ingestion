@@ -15,27 +15,6 @@ logger = logging.getLogger(__name__)
 _SYNTH_BASE = 90_000_000
 
 
-def resolve_genus_taxid(genus: str, session: requests.Session) -> int | None:
-    try:
-        r = session.get(
-            f"https://www.ebi.ac.uk/ena/taxonomy/rest/scientific-name/{genus}",
-            timeout=15,
-        )
-        if not r.ok:
-            return None
-        data = r.json()
-        if data and data[0].get("taxId"):
-            return int(data[0]["taxId"])
-    except Exception:
-        logger.debug("taxId lookup failed for genus %s", genus)
-    return None
-
-
-TAXONOMY_FILE = str(
-    pathlib.Path(__file__).resolve().parent / "data" / "final_samples.tsv"
-)
-
-
 def _read_tsv(path: str) -> list[dict]:
     with open(path, newline="") as fh:
         return list(csv.DictReader(fh, delimiter="\t"))
