@@ -10,6 +10,13 @@ from dependencies.aegis_transforms import fetch_taxonomy
 
 logger = logging.getLogger(__name__)
 
+# Path to Carl's genus taxonomy table, bundled beside this module so a DAG run
+# is self-contained. Imported by the DAG (build_edna_species_docs and
+# link_layer_communities both pass it to the builders).
+TAXONOMY_FILE = str(
+    pathlib.Path(__file__).resolve().parent / "data" / "final_samples.tsv"
+)
+
 # Synthetic taxId range for genera that don't resolve at ENA (and the
 # "Unassigned" bucket).
 _SYNTH_BASE = 90_000_000
