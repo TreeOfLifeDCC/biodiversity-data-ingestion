@@ -37,7 +37,7 @@ def _make_session() -> requests.Session:
     session.mount("https://", adapter)
     return session
 
-def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
+def main(study_id: str, project_tag: str) -> dict[str, dict]:
     """
     Collect DToL metadata from BioSamples, experiments, assemblies and analyses
     from the ENA
