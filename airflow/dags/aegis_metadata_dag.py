@@ -51,7 +51,7 @@ def fetch_metadata() -> dict:
     from dependencies import collect_metadata_experiments_assemblies
 
     return collect_metadata_experiments_assemblies.main(
-        STUDY_ID, "AEGIS", PROJECT_NAME
+        STUDY_ID, "AEGIS"
     )
 
 
@@ -143,7 +143,7 @@ def build_data_portal_docs(metadata: dict, annotations: dict) -> list[dict]:
 @task(multiple_outputs=False)
 def fetch_ancient_metadata() -> dict:
     return collect_metadata_experiments_assemblies.main(
-        ANCIENT_STUDY_ID, ANCIENT_PROJECT_TAG, ANCIENT_PROJECT_NAME
+        ANCIENT_STUDY_ID, ANCIENT_PROJECT_TAG
     )
 
 
