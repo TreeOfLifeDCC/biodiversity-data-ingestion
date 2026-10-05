@@ -133,7 +133,7 @@ def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
         "analyses": analyses_aggr,
     }.items():
         join_metadata_and_data(
-            record_type, agg_name, project_tag, samples, biosamples_root_url, session
+            record_type, agg_name, project_name, samples, biosamples_root_url, session
         )
 
     # check for missing child -> parent relationship records
