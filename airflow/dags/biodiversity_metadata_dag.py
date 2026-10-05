@@ -52,7 +52,13 @@ def additional_task(host: str, password: str, project_name: str, **kwargs):
 def get_metadata(study_id: str, project_name: str, bucket_name: str, **kwargs) -> None:
     from dependencies import collect_metadata_experiments_assemblies
 
-    metadata = collect_metadata_experiments_assemblies.main(study_id, project_name)
+    if "ERGA" in project_name:
+        project_tag = "ERGA"
+    else:
+        project_tag = project_name
+    metadata = collect_metadata_experiments_assemblies.main(
+        study_id, project_tag, project_name
+    )
 
     base = ObjectStoragePath(f"gcs://{bucket_name}", conn_id="google_cloud_default")
     base.mkdir(exist_ok=True)

@@ -32,10 +32,12 @@ from dependencies import import_annotations, manage_es_indices
 from dependencies.aegis_projects import aegis_projects
 
 STUDY_ID = "PRJEB80366"
+PROJECT_NAME = aegis_projects[STUDY_ID]["project_name"]
 
 # Iceland ancient lake-sediment metagenomic project.
 ANCIENT_STUDY_ID = "PRJEB101868"
 ANCIENT_PROJECT_TAG = aegis_projects[ANCIENT_STUDY_ID].get("project_tag", "Aegis")
+ANCIENT_PROJECT_NAME = aegis_projects[ANCIENT_STUDY_ID]["project_name"]
 
 
 @task(multiple_outputs=False)
@@ -49,7 +51,7 @@ def fetch_metadata() -> dict:
     from dependencies import collect_metadata_experiments_assemblies
 
     return collect_metadata_experiments_assemblies.main(
-        STUDY_ID, "AEGIS"
+        STUDY_ID, "AEGIS", PROJECT_NAME
     )
 
 
@@ -141,7 +143,7 @@ def build_data_portal_docs(metadata: dict, annotations: dict) -> list[dict]:
 @task(multiple_outputs=False)
 def fetch_ancient_metadata() -> dict:
     return collect_metadata_experiments_assemblies.main(
-        ANCIENT_STUDY_ID, ANCIENT_PROJECT_TAG
+        ANCIENT_STUDY_ID, ANCIENT_PROJECT_TAG, ANCIENT_PROJECT_NAME
     )
 
 

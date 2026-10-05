@@ -1,5 +1,4 @@
 import json
-import urllib.parse
 from collections import defaultdict
 from typing import Any
 from time import sleep
@@ -38,7 +37,7 @@ def _make_session() -> requests.Session:
     session.mount("https://", adapter)
     return session
 
-def main(study_id: str, project_tag: str) -> dict[str, dict]:
+def main(study_id: str, project_tag: str, project_name: str) -> dict[str, dict]:
     """
     Collect DToL metadata from BioSamples, experiments, assemblies and analyses
     from the ENA
@@ -105,10 +104,10 @@ def main(study_id: str, project_tag: str) -> dict[str, dict]:
         parse_data_records(aggr_var, records_data)
 
     # collect metadata from the BioSamples
-    if project_tag.upper().startswith(("AEGIS", "ASG", "DTOL", "ERGA")):
+    if project_tag.upper() in ["AEGIS", "ASG", "DTOL", "ERGA"]:
         first_url = (
             f"{biosamples_root_url}?size=200&filter="
-            f"attr%3Aproject%20name%3A{urllib.parse.quote(project_tag)}"
+            f"attr%3Aproject%20name%3A{project_tag}"
         )
         samples_response = _get_json(session, first_url)
         sleep(0.1)
