@@ -2,10 +2,15 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 
 from biodiv_airflow.annotations_update import (
     build_update_manifest,
     select_current_annotations,
+)
+from biodiv_airflow.sql_queries import (
+    build_create_annotation_update_manifest_stage_sql,
+    build_update_provenance_metadata_from_manifest_sql,
 )
 from biodiv_airflow.config import load_config
 from biodiv_airflow.helpers import validate_config
@@ -72,4 +77,73 @@ with DAG(
         },
     )
 
-    validate >> select_annotations >> build_manifests
+    create_manifest_stage_table = BigQueryInsertJobOperator(
+        task_id="create_annotation_update_manifest_stage_table",
+        configuration={
+            "query": {
+                "query": build_create_annotation_update_manifest_stage_sql(cfg),
+                "useLegacySql": False,
+            }
+        },
+    )
+
+    load_provenance_only_manifest_stage = BigQueryInsertJobOperator(
+        task_id="load_provenance_only_manifest_stage",
+        configuration={
+            "load": {
+                "sourceUris": [provenance_only_updates_uri],
+                "destinationTable": {
+                    "projectId": cfg.gcp_project,
+                    "datasetId": cfg.bq_dataset,
+                    "tableId": "bp_annotation_update_manifest_stage",
+                },
+                "sourceFormat": "NEWLINE_DELIMITED_JSON",
+                "writeDisposition": "WRITE_TRUNCATE",
+                "schema": {
+                    "fields": [
+                        {"name": "tax_id", "type": "STRING"},
+                        {"name": "species", "type": "STRING"},
+                        {"name": "previous_accession", "type": "STRING"},
+                        {"name": "new_accession", "type": "STRING"},
+                        {"name": "previous_gtf_url", "type": "STRING"},
+                        {"name": "new_gtf_url", "type": "STRING"},
+                        {"name": "old_ensembl_url", "type": "STRING"},
+                        {"name": "new_ensembl_url", "type": "STRING"},
+                        {"name": "Biodiversity_portal", "type": "STRING"},
+                        {"name": "gbif_url", "type": "STRING"},
+                        {"name": "action", "type": "STRING"},
+                        {"name": "requires_gtf_reload", "type": "BOOL"},
+                        {"name": "requires_provenance_update", "type": "BOOL"},
+                        {"name": "selection_reason", "type": "STRING"},
+                        {"name": "assembly_classification", "type": "STRING"},
+                        {"name": "previous_gtf_size_bytes", "type": "INT64"},
+                        {"name": "new_gtf_size_bytes", "type": "INT64"},
+                        {"name": "previous_gtf_last_modified", "type": "STRING"},
+                        {"name": "new_gtf_last_modified", "type": "STRING"},
+                        {"name": "previous_gtf_url_pattern", "type": "STRING"},
+                        {"name": "new_gtf_url_pattern", "type": "STRING"},
+                    ]
+                },
+            }
+        },
+    )
+
+    update_provenance_metadata = BigQueryInsertJobOperator(
+        task_id="update_provenance_metadata",
+        configuration={
+            "query": {
+                "query": build_update_provenance_metadata_from_manifest_sql(cfg),
+                "useLegacySql": False,
+            }
+        },
+    )
+
+    (
+            validate
+            >> select_annotations
+            >> build_manifests
+            >> create_manifest_stage_table
+            >> load_provenance_only_manifest_stage
+            >> update_provenance_metadata
+    )
+
