@@ -443,3 +443,52 @@ def build_bq_gene_names_sql(
     """
 
     return query
+
+
+def build_create_annotation_update_manifest_stage_sql(cfg: BiodivConfig) -> str:
+    return f"""
+        CREATE TABLE IF NOT EXISTS `{cfg.gcp_project}.{cfg.bq_dataset}.bp_annotation_update_manifest_stage` (
+          tax_id STRING,
+          species STRING,
+          previous_accession STRING,
+          new_accession STRING,
+          previous_gtf_url STRING,
+          new_gtf_url STRING,
+          old_ensembl_url STRING,
+          new_ensembl_url STRING,
+          Biodiversity_portal STRING,
+          gbif_url STRING,
+          action STRING,
+          requires_gtf_reload BOOL,
+          requires_provenance_update BOOL,
+          selection_reason STRING,
+          assembly_classification STRING,
+          previous_gtf_size_bytes INT64,
+          new_gtf_size_bytes INT64,
+          previous_gtf_last_modified STRING,
+          new_gtf_last_modified STRING,
+          previous_gtf_url_pattern STRING,
+          new_gtf_url_pattern STRING,
+          loaded_at TIMESTAMP
+        )
+    """
+
+
+def build_update_provenance_metadata_from_manifest_sql(cfg: BiodivConfig) -> str:
+    return f"""
+        MERGE `{cfg.gcp_project}.{cfg.bq_dataset}.bp_provenance_metadata` AS target
+        USING (
+          SELECT *
+          FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_annotation_update_manifest_stage`
+          WHERE requires_provenance_update = TRUE
+        ) AS source
+        ON target.tax_id = source.tax_id
+        WHEN MATCHED THEN
+          UPDATE SET
+            accession = source.new_accession,
+            GTF = source.new_gtf_url,
+            Ensembl_browser = source.new_ensembl_url,
+            Biodiversity_portal = source.Biodiversity_portal,
+            gbif_url = source.gbif_url,
+            last_update = CURRENT_TIMESTAMP()
+    """
