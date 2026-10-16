@@ -7,7 +7,9 @@ from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobO
 
 from biodiv_airflow.annotations_update import (
     build_update_manifest,
-    select_current_annotations, choose_provenance_update_branch,
+    select_current_annotations,
+    choose_provenance_update_branch,
+    choose_annotation_update_branch,
 )
 from biodiv_airflow.sql_queries import (
     build_create_annotation_update_manifest_stage_sql,
@@ -88,11 +90,11 @@ with DAG(
         },
     )
 
-    load_provenance_only_manifest_stage = BigQueryInsertJobOperator(
-        task_id="load_provenance_only_manifest_stage",
+    load_update_manifest_stage = BigQueryInsertJobOperator(
+        task_id="load_update_manifest_stage",
         configuration={
             "load": {
-                "sourceUris": [provenance_only_updates_uri],
+                "sourceUris": [update_manifest_uri],
                 "destinationTable": {
                     "projectId": cfg.gcp_project,
                     "datasetId": cfg.bq_dataset,
@@ -155,19 +157,32 @@ with DAG(
         trigger_rule="none_failed_min_one_success",
     )
 
-    validate >> select_annotations >> build_manifests >> check_provenance_updates
+    check_annotation_updates = BranchPythonOperator(
+        task_id="check_annotation_updates",
+        python_callable=choose_annotation_update_branch,
+    )
 
-    check_provenance_updates >> [
+    no_annotation_updates = EmptyOperator(
+        task_id="no_annotation_updates",
+    )
+
+    validate >> select_annotations >> build_manifests >> check_annotation_updates
+
+    check_annotation_updates >> [
         create_manifest_stage_table,
-        no_provenance_updates,
+        no_annotation_updates,
     ]
 
     (
             create_manifest_stage_table
-            >> load_provenance_only_manifest_stage
-            >> update_provenance_metadata
-            >> provenance_updates_complete
+            >> load_update_manifest_stage
+            >> check_provenance_updates
     )
 
-    no_provenance_updates >> provenance_updates_complete
+    check_provenance_updates >> [
+        update_provenance_metadata,
+        no_provenance_updates,
+    ]
 
+    update_provenance_metadata >> provenance_updates_complete
+    no_provenance_updates >> provenance_updates_complete

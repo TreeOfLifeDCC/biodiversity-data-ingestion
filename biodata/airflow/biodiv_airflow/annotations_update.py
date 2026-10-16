@@ -1579,7 +1579,7 @@ def _parse_http_datetime(value: str | None) -> datetime | None:
         return None
 
 
-# Brnaching helpers
+# Brnaching helpers - gates
 
 def choose_provenance_update_branch(ti) -> str:
     """Choose the provenance path using the current run's manifest summary."""
@@ -1590,6 +1590,20 @@ def choose_provenance_update_branch(ti) -> str:
         raise ValueError(f"Invalid provenance-only update count: {count!r}")
 
     if count > 0:
-        return "create_annotation_update_manifest_stage_table"
+        return "update_provenance_metadata"
 
     return "no_provenance_only_updates"
+
+
+def choose_annotation_update_branch(ti) -> str:
+    """Skip warehouse updates when the full update manifest is empty."""
+    summary = ti.xcom_pull(task_ids="build_update_manifest")
+    count = summary["update_manifest_count"]
+
+    if type(count) is not int or count < 0:
+        raise ValueError(f"Invalid update manifest count: {count!r}")
+
+    if count > 0:
+        return "create_annotation_update_manifest_stage_table"
+
+    return "no_annotation_updates"
