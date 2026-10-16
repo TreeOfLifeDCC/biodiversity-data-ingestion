@@ -9,11 +9,12 @@ from biodiv_airflow.annotations_update import (
     build_update_manifest,
     select_current_annotations,
     choose_provenance_update_branch,
-    choose_annotation_update_branch,
+    choose_annotation_update_branch, choose_accession_retag_branch,
 )
 from biodiv_airflow.sql_queries import (
     build_create_annotation_update_manifest_stage_sql,
     build_update_provenance_metadata_from_manifest_sql,
+    build_retag_annotation_accessions_sql,
 )
 from biodiv_airflow.config import load_config
 from biodiv_airflow.helpers import validate_config
@@ -27,7 +28,8 @@ default_args = {
 
 cfg = load_config()
 
-manifest_prefix = f"{cfg.run_prefix}/annotations_update"
+# manifest_prefix = f"{cfg.run_prefix}/annotations_update"
+manifest_prefix = "gs://prj-ext-prod-biodiv-data-in-gbdp/biodiv-pipelines-dev/out/annotations_update"
 selected_annotations_uri = f"{manifest_prefix}/selected_annotations.jsonl"
 rejected_missing_gtf_uri = f"{manifest_prefix}/rejected_missing_gtf_url.jsonl"
 update_manifest_uri = f"{manifest_prefix}/update_manifest.jsonl"
@@ -143,6 +145,16 @@ with DAG(
         },
     )
 
+    retag_annotation_accessions = BigQueryInsertJobOperator(
+        task_id="retag_annotation_accessions",
+        configuration={
+            "query": {
+                "query": build_retag_annotation_accessions_sql(cfg),
+                "useLegacySql": False,
+            }
+        },
+    )
+
     check_provenance_updates = BranchPythonOperator(
         task_id="check_provenance_updates",
         python_callable=choose_provenance_update_branch,
@@ -166,6 +178,20 @@ with DAG(
         task_id="no_annotation_updates",
     )
 
+    check_accession_changes = BranchPythonOperator(
+        task_id="check_accession_changes",
+        python_callable=choose_accession_retag_branch,
+    )
+
+    no_accession_changes = EmptyOperator(
+        task_id="no_accession_changes",
+    )
+
+    accession_retagging_complete = EmptyOperator(
+        task_id="accession_retagging_complete",
+        trigger_rule="none_failed_min_one_success",
+    )
+
     validate >> select_annotations >> build_manifests >> check_annotation_updates
 
     check_annotation_updates >> [
@@ -186,3 +212,13 @@ with DAG(
 
     update_provenance_metadata >> provenance_updates_complete
     no_provenance_updates >> provenance_updates_complete
+
+    provenance_updates_complete >> check_accession_changes
+
+    check_accession_changes >> [
+        retag_annotation_accessions,
+        no_accession_changes,
+    ]
+
+    retag_annotation_accessions >> accession_retagging_complete
+    no_accession_changes >> accession_retagging_complete
