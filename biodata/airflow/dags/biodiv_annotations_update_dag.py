@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
 
 from airflow import DAG
-from airflow.providers.standard.operators.python import PythonOperator
+from airflow.providers.standard.operators.python import PythonOperator, BranchPythonOperator
+from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 
 from biodiv_airflow.annotations_update import (
     build_update_manifest,
-    select_current_annotations,
+    select_current_annotations, choose_provenance_update_branch,
 )
 from biodiv_airflow.sql_queries import (
     build_create_annotation_update_manifest_stage_sql,
@@ -105,6 +106,8 @@ with DAG(
                         {"name": "species", "type": "STRING"},
                         {"name": "previous_accession", "type": "STRING"},
                         {"name": "new_accession", "type": "STRING"},
+                        {"name": "accession_root", "type": "STRING"},
+                        {"name": "accession_version", "type": "INT64"},
                         {"name": "previous_gtf_url", "type": "STRING"},
                         {"name": "new_gtf_url", "type": "STRING"},
                         {"name": "old_ensembl_url", "type": "STRING"},
@@ -138,12 +141,33 @@ with DAG(
         },
     )
 
+    check_provenance_updates = BranchPythonOperator(
+        task_id="check_provenance_updates",
+        python_callable=choose_provenance_update_branch,
+    )
+
+    no_provenance_updates = EmptyOperator(
+        task_id="no_provenance_only_updates",
+    )
+
+    provenance_updates_complete = EmptyOperator(
+        task_id="provenance_updates_complete",
+        trigger_rule="none_failed_min_one_success",
+    )
+
+    validate >> select_annotations >> build_manifests >> check_provenance_updates
+
+    check_provenance_updates >> [
+        create_manifest_stage_table,
+        no_provenance_updates,
+    ]
+
     (
-            validate
-            >> select_annotations
-            >> build_manifests
-            >> create_manifest_stage_table
+            create_manifest_stage_table
             >> load_provenance_only_manifest_stage
             >> update_provenance_metadata
+            >> provenance_updates_complete
     )
+
+    no_provenance_updates >> provenance_updates_complete
 
