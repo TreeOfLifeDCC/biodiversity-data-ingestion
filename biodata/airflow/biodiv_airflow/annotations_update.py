@@ -1607,3 +1607,17 @@ def choose_annotation_update_branch(ti) -> str:
         return "create_annotation_update_manifest_stage_table"
 
     return "no_annotation_updates"
+
+
+def choose_accession_retag_branch(ti) -> str:
+    """Run retagging only when the manifest contains accession changes."""
+    summary = ti.xcom_pull(task_ids="build_update_manifest")
+    count = summary["action_counts"].get("UPDATE_ACCESSION_CHANGED", 0)
+
+    if type(count) is not int or count < 0:
+        raise ValueError(f"Invalid accession-change count: {count!r}")
+
+    if count > 0:
+        return "retag_annotation_accessions"
+
+    return "no_accession_changes"
