@@ -1,4 +1,9 @@
-from biodiv_airflow.config import BiodivConfig
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from biodiv_airflow.config import BiodivConfig
 
 
 def build_bq_warehouse_integration_sql(cfg: BiodivConfig) -> str:
@@ -495,3 +500,78 @@ def build_update_provenance_metadata_from_manifest_sql(cfg: BiodivConfig) -> str
             gbif_url = source.gbif_url,
             last_update = CURRENT_TIMESTAMP()
     """
+
+
+def build_retag_annotation_accessions_sql(cfg: BiodivConfig) -> str:
+    """Retag species data after successful replacement annotation loading."""
+    dataset = f"{cfg.gcp_project}.{cfg.bq_dataset}"
+    statements = [
+        f"""
+        CREATE TEMP TABLE accession_changes AS
+        SELECT tax_id, previous_accession, new_accession
+        FROM `{dataset}.bp_annotation_update_manifest_stage`
+        WHERE action = 'UPDATE_ACCESSION_CHANGED';
+
+        ASSERT NOT EXISTS (
+          SELECT 1 FROM accession_changes
+          WHERE NULLIF(TRIM(tax_id), '') IS NULL
+             OR NULLIF(TRIM(previous_accession), '') IS NULL
+             OR NULLIF(TRIM(new_accession), '') IS NULL
+             OR previous_accession = new_accession
+        ) AS 'Invalid accession-change identifiers';
+
+        ASSERT (
+          SELECT COUNT(*) = COUNT(DISTINCT tax_id)
+             AND COUNT(*) = COUNT(DISTINCT previous_accession)
+             AND COUNT(*) = COUNT(DISTINCT new_accession)
+          FROM accession_changes
+        ) AS 'Accession-change mapping must be unique';
+
+        ASSERT NOT EXISTS (
+          SELECT 1
+          FROM accession_changes AS a
+          JOIN accession_changes AS b
+            ON a.new_accession = b.previous_accession
+        ) AS 'Overlapping accession-change mappings';
+
+        BEGIN TRANSACTION;
+        """
+    ]
+
+    tables = [
+        ("bp_taxonomy_validated", True),
+        ("bp_gbif_occurrences", True),
+        ("bp_spatial_annotations", True),
+        ("bp_species_range_estimates", False),
+    ]
+
+    for table, has_tax_id in tables:
+        if has_tax_id:
+            statements.append(f"""
+                ASSERT NOT EXISTS (
+                  SELECT 1
+                  FROM `{dataset}.{table}` AS t
+                  JOIN accession_changes AS m
+                    ON t.accession IN (m.previous_accession, m.new_accession)
+                  WHERE CAST(t.tax_id AS STRING) IS DISTINCT FROM m.tax_id
+                ) AS 'Tax ID mismatch in {table}';
+            """)
+
+        statements.append(f"""
+            ASSERT NOT EXISTS (
+              SELECT 1
+              FROM accession_changes AS m
+              JOIN `{dataset}.{table}` AS old_rows
+                ON old_rows.accession = m.previous_accession
+              JOIN `{dataset}.{table}` AS new_rows
+                ON new_rows.accession = m.new_accession
+            ) AS 'Both old and new accessions exist in {table}';
+
+            UPDATE `{dataset}.{table}` AS t
+            SET accession = m.new_accession
+            FROM accession_changes AS m
+            WHERE t.accession = m.previous_accession;
+        """)
+
+    statements.append("COMMIT TRANSACTION;")
+    return "\n".join(statements)
