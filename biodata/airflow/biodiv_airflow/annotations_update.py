@@ -822,7 +822,7 @@ def fetch_bq_provenance_by_tax_id(
     dataset: str,
     table: str = "bp_provenance_metadata",
 ) -> dict[str, dict]:
-    """Fetch current provenance rows once and index them by tax_id."""
+    """Fetch provenance once, requiring a unique row for each non-null tax_id."""
     client = bigquery.Client(project=project_id)
 
     query = f"""
@@ -853,16 +853,12 @@ def fetch_bq_provenance_by_tax_id(
         by_tax_id[tax_id] = record
 
     if duplicates:
-        print(
-            json.dumps(
-                {
-                    "warning": "duplicate_tax_ids_in_bp_provenance_metadata",
-                    "duplicate_count": len(duplicates),
-                    "sample_tax_ids": list(duplicates)[:20],
-                },
-                indent=2,
-                sort_keys=True,
-            )
+        sample_tax_ids = ", ".join(sorted(duplicates)[:20])
+        raise ValueError(
+            f"Duplicate tax_ids found in {project_id}.{dataset}.{table}: "
+            f"{len(duplicates)} affected tax_ids. "
+            f"Sample: {sample_tax_ids}. "
+            "Resolve duplicates before rebuilding the update manifest."
         )
 
     return by_tax_id
@@ -1581,3 +1577,19 @@ def _parse_http_datetime(value: str | None) -> datetime | None:
         return parsedate_to_datetime(value)
     except (TypeError, ValueError):
         return None
+
+
+# Brnaching helpers
+
+def choose_provenance_update_branch(ti) -> str:
+    """Choose the provenance path using the current run's manifest summary."""
+    summary = ti.xcom_pull(task_ids="build_update_manifest")
+    count = summary["provenance_only_update_count"]
+
+    if not isinstance(count, int) or count < 0:
+        raise ValueError(f"Invalid provenance-only update count: {count!r}")
+
+    if count > 0:
+        return "create_annotation_update_manifest_stage_table"
+
+    return "no_provenance_only_updates"
