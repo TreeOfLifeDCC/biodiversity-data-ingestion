@@ -452,6 +452,8 @@ def build_create_annotation_update_manifest_stage_sql(cfg: BiodivConfig) -> str:
           species STRING,
           previous_accession STRING,
           new_accession STRING,
+          accession_root STRING,
+          accession_version INT64,
           previous_gtf_url STRING,
           new_gtf_url STRING,
           old_ensembl_url STRING,
@@ -469,7 +471,6 @@ def build_create_annotation_update_manifest_stage_sql(cfg: BiodivConfig) -> str:
           new_gtf_last_modified STRING,
           previous_gtf_url_pattern STRING,
           new_gtf_url_pattern STRING,
-          loaded_at TIMESTAMP
         )
     """
 
@@ -481,6 +482,8 @@ def build_update_provenance_metadata_from_manifest_sql(cfg: BiodivConfig) -> str
           SELECT *
           FROM `{cfg.gcp_project}.{cfg.bq_dataset}.bp_annotation_update_manifest_stage`
           WHERE requires_provenance_update = TRUE
+            AND requires_gtf_reload = FALSE
+            AND action = 'UPDATE_PROVENANCE_ONLY'
         ) AS source
         ON target.tax_id = source.tax_id
         WHEN MATCHED THEN
